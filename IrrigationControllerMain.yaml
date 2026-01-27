@@ -1,0 +1,2408 @@
+# Made for ESPHome compliant configuration
+# Irrigation Controller with Expansion Board Support
+
+# These substitutions allow the end user to override certain values
+substitutions:
+  name: "irrigation-controller"
+  friendly_name: "Irrigation Controller"
+  zone_1_name: "Zone 1"
+  zone_2_name: "Zone 2"
+  zone_3_name: "Zone 3"
+  zone_4_name: "Zone 4"
+  zone_5_name: "Zone 5"
+  zone_6_name: "Zone 6"
+  zone_7_name: "Zone 7"
+  zone_8_name: "Zone 8"
+  software_version: "1.2.0"
+  sensor_update_frequency: "10s"
+  log_level: "INFO"
+  zone_1_valve_id: valve_0
+  zone_2_valve_id: valve_1
+  zone_3_valve_id: valve_2
+  zone_4_valve_id: valve_3
+  zone_5_valve_id: valve_4
+  zone_6_valve_id: valve_5
+  zone_7_valve_id: valve_6
+  zone_8_valve_id: valve_7
+  devicename: irrigation_controller
+  upper_devicename: "Irrigation Controller"
+  uom: "Min"
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  # Automatically add the mac address to the name
+  # so you can use a single firmware for all devices
+  name_add_mac_suffix: true
+  # Project information for Made for ESPHome
+  project:
+    name: "flux_open_home.irrigation_controller"
+    version: "${software_version}"
+  on_boot:
+    priority: -100
+    then:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "System Ready"
+      - sprinkler.set_multiplier:
+          id: ${devicename}
+          multiplier: 1
+      - light.turn_on:
+          id: status_led
+          brightness: 80%
+          red: 0%
+          green: 0%
+          blue: 100%
+          effect: "Pulse"
+      # Auto-detect expansion boards and disable zones on missing boards
+      - delay: 2s
+      - script.execute: detect_expansion_boards
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+  id: logger_component
+  level: ${log_level}
+  logs:
+    text_sensor: WARN
+
+# API is required for Home Assistant integration and dashboard import
+# No encryption key - user will set their own after adoption
+api:
+  id: api_server
+
+# OTA is required for Over-the-Air updating
+# No password - user will set their own after adoption
+ota:
+  id: ota_component
+  platform: esphome
+
+# Dashboard import for ESPHome adoption
+# Update this URL to point to your public GitHub repository
+dashboard_import:
+  package_import_url: github://fluxopenhome/irrigation-controller/irrigation_controller.yaml@main
+  import_full_config: true
+
+wifi:
+  id: wifi_component
+  # Set up a wifi access point for initial provisioning
+  ap:
+    ssid: "${name}"
+    password: "12345678"
+  on_connect:
+    - light.turn_on:
+        id: status_led
+        brightness: 80%
+        red: 0%
+        green: 100%
+        blue: 0%
+        effect: "Pulse"
+  on_disconnect:
+    - light.turn_on:
+        id: status_led
+        brightness: 80%
+        red: 0%
+        green: 0%
+        blue: 100%
+        effect: "Pulse"
+
+# Captive portal for Wi-Fi configuration via AP
+captive_portal:
+  id: captive_portal_component
+
+# Improv via BLE for Wi-Fi provisioning (ESP32)
+esp32_improv:
+  id: esp32_improv_component
+  authorizer: none
+
+# Improv via Serial for Wi-Fi provisioning
+improv_serial:
+  id: improv_serial_component
+  next_url: http://{{ip_address}}
+
+# Web server for local access
+web_server:
+  id: web_server_component
+  port: 80
+
+# Time from Home Assistant
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+# Global variables for expansion board detection
+globals:
+  - id: board1_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: board2_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: board3_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+# I2C bus for expansion boards
+i2c:
+  id: i2c_bus
+  sda: GPIO8
+  scl: GPIO9
+  scan: true
+
+# MCP23017 expansion boards (optional hardware)
+mcp23017:
+  - id: mcp_board_1
+    address: 0x20
+  - id: mcp_board_2
+    address: 0x21
+  - id: mcp_board_3
+    address: 0x22
+
+# Status LED (WS2812)
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    name: "Status LED"
+    pin: GPIO42
+    num_leds: 1
+    chipset: ws2812
+    rgb_order: GRB
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 1s
+          update_interval: 1s
+
+# Schedule start times (text inputs)
+text:
+  - platform: template
+    id: schedule_start_time_1
+    name: "Schedule Start Time 1"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: "06:00"
+    icon: "mdi:clock-start"
+
+  - platform: template
+    id: schedule_start_time_2
+    name: "Schedule Start Time 2"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+    icon: "mdi:clock-start"
+
+  - platform: template
+    id: schedule_start_time_3
+    name: "Schedule Start Time 3"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+    icon: "mdi:clock-start"
+
+  - platform: template
+    id: schedule_start_time_4
+    name: "Schedule Start Time 4"
+    optimistic: true
+    min_length: 0
+    max_length: 8
+    mode: text
+    restore_value: true
+    entity_category: config
+    initial_value: ""
+    icon: "mdi:clock-start"
+
+# Zone 8 mode selector
+select:
+  - platform: template
+    id: zone8_mode
+    name: "Zone 8 Mode"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    initial_option: "Zone"
+    icon: "mdi:tune-variant"
+    options:
+      - "Zone"
+      - "Master Valve"
+      - "Pump Start Relay"
+    on_value:
+      - lambda: |-
+          if (x == "Pump Start Relay" && id(irrigation_controller_enable_8).state) {
+            id(irrigation_controller_enable_8).turn_off();
+          } else if (x != "Pump Start Relay" && !id(irrigation_controller_enable_8).state) {
+            id(irrigation_controller_enable_8).turn_on();
+          }
+
+# Text sensors for status and info
+text_sensor:
+  - platform: version
+    id: esphome_version
+    name: "ESPHome Version"
+    
+  - platform: wifi_info
+    ip_address:
+      id: wifi_ip_address
+      name: "IP Address"
+    ssid:
+      id: wifi_ssid
+      name: "Connected SSID"
+    
+  - platform: template
+    id: time_remaining
+    name: "Time Remaining"
+    update_interval: ${sensor_update_frequency}
+    icon: "mdi:timer-sand"
+    lambda: |-
+      float raw_time = id(${devicename}).time_remaining_active_valve().value_or(0);
+      int minutes = (int)(raw_time / 60.0);
+      int seconds = (int)raw_time % 60;
+      return std::to_string(minutes) + "m " + std::to_string(seconds) + "s";
+
+  - platform: template
+    id: progress_percent
+    name: "Progress"
+    update_interval: ${sensor_update_frequency}
+    icon: "mdi:progress-clock"
+    lambda: |-
+      if (!id(${devicename}).active_valve().has_value()) {
+        return std::string("0%");
+      }
+      int active_valve = id(${devicename}).active_valve().value();
+      float total_time = id(${devicename}).valve_run_duration_adjusted(active_valve);
+      float remaining_time = id(${devicename}).time_remaining_active_valve().value_or(0);
+      if (total_time <= 0) return std::string("0%");
+      int progress = round(((total_time - remaining_time) * 100) / total_time);
+      return std::to_string(progress) + "%";
+
+  - platform: template
+    id: valve_status
+    name: "Status"
+    update_interval: never
+    icon: "mdi:information-variant"
+
+  - platform: template
+    id: detected_zones
+    name: "Detected Zones"
+    icon: "mdi:expansion-card-variant"
+    lambda: |-
+      int zones = 8;
+      if (id(board1_detected)) zones += 8;
+      if (id(board2_detected)) zones += 8;
+      if (id(board3_detected)) zones += 8;
+      
+      std::string result = std::to_string(zones) + " zones (";
+      if (!id(board1_detected) && !id(board2_detected) && !id(board3_detected)) {
+        result += "no expansion boards";
+      } else {
+        bool first = true;
+        if (id(board1_detected)) { result += "0x20"; first = false; }
+        if (id(board2_detected)) { if (!first) result += ", "; result += "0x21"; first = false; }
+        if (id(board3_detected)) { if (!first) result += ", "; result += "0x22"; }
+      }
+      result += ")";
+      return result;
+
+# Sensors for uptime and signal
+sensor:
+  - platform: uptime
+    id: uptime_sensor
+    name: "Uptime"
+
+  - platform: wifi_signal
+    id: wifi_signal_sensor
+    name: "WiFi Signal"
+    update_interval: 60s
+
+# Zone run duration controls
+number:
+  - platform: template
+    id: ${zone_1_valve_id}
+    name: ${zone_1_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 0
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_2_valve_id}
+    name: ${zone_2_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 1
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_3_valve_id}
+    name: ${zone_3_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 2
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_4_valve_id}
+    name: ${zone_4_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 3
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_5_valve_id}
+    name: ${zone_5_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 4
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_6_valve_id}
+    name: ${zone_6_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 5
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_7_valve_id}
+    name: ${zone_7_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 6
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ${zone_8_valve_id}
+    name: ${zone_8_name}
+    min_value: 1
+    max_value: 120
+    step: 1
+    unit_of_measurement: ${uom}
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 7
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: sprinkler_ctrlr_repeat_cycles
+    name: "Repeat Cycles"
+    min_value: 0
+    max_value: 5
+    step: 1
+    mode: box
+    icon: "mdi:water-sync"
+    lambda: "return id(${devicename}).repeat();"
+    set_action:
+      - sprinkler.set_repeat:
+          id: ${devicename}
+          repeat: !lambda 'return x;'
+
+  # Expansion zone durations (9-32)
+  - platform: template
+    id: ext_zone_9_duration
+    name: "Zone 9"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 8
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_10_duration
+    name: "Zone 10"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 9
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_11_duration
+    name: "Zone 11"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 10
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_12_duration
+    name: "Zone 12"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 11
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_13_duration
+    name: "Zone 13"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 12
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_14_duration
+    name: "Zone 14"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 13
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_15_duration
+    name: "Zone 15"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 14
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_16_duration
+    name: "Zone 16"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 15
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_17_duration
+    name: "Zone 17"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 16
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_18_duration
+    name: "Zone 18"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 17
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_19_duration
+    name: "Zone 19"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 18
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_20_duration
+    name: "Zone 20"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 19
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_21_duration
+    name: "Zone 21"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 20
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_22_duration
+    name: "Zone 22"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 21
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_23_duration
+    name: "Zone 23"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 22
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_24_duration
+    name: "Zone 24"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 23
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_25_duration
+    name: "Zone 25"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 24
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_26_duration
+    name: "Zone 26"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 25
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_27_duration
+    name: "Zone 27"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 26
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_28_duration
+    name: "Zone 28"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 27
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_29_duration
+    name: "Zone 29"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 28
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_30_duration
+    name: "Zone 30"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 29
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_31_duration
+    name: "Zone 31"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 30
+          run_duration: !lambda 'return x * 60;'
+
+  - platform: template
+    id: ext_zone_32_duration
+    name: "Zone 32"
+    min_value: 1
+    max_value: 60
+    step: 1
+    unit_of_measurement: Min
+    icon: "mdi:timer-outline"
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: 2
+    set_action:
+      - sprinkler.set_valve_run_duration:
+          id: ${devicename}
+          valve_number: 31
+          run_duration: !lambda 'return x * 60;'
+
+# Sprinkler controller with all 32 zones
+sprinkler:
+  - id: ${devicename}
+    main_switch:
+      name: "Start/Stop/Resume"
+      id: main_switch
+    auto_advance_switch: 
+      name: "Auto Advance"
+      id: auto_advance_switch
+    valve_open_delay: 3s
+    repeat_number:
+      name: "Repeat"
+      id: repeat_number
+    valves:
+      # Main board zones 1-8
+      - valve_switch: ${zone_1_name}
+        enable_switch: 
+          name: "Enable ${zone_1_name}"
+          id: irrigation_controller_enable_1
+        run_duration_number: ${zone_1_valve_id}
+        valve_switch_id: irrigation_controller_1
+      - valve_switch: ${zone_2_name}
+        enable_switch: 
+          name: "Enable ${zone_2_name}"
+          id: irrigation_controller_enable_2
+        run_duration_number: ${zone_2_valve_id}
+        valve_switch_id: irrigation_controller_2
+      - valve_switch: ${zone_3_name}
+        enable_switch: 
+          name: "Enable ${zone_3_name}"
+          id: irrigation_controller_enable_3
+        run_duration_number: ${zone_3_valve_id}
+        valve_switch_id: irrigation_controller_3
+      - valve_switch: ${zone_4_name}
+        enable_switch: 
+          name: "Enable ${zone_4_name}"
+          id: irrigation_controller_enable_4
+        run_duration_number: ${zone_4_valve_id}
+        valve_switch_id: irrigation_controller_4
+      - valve_switch: ${zone_5_name}
+        enable_switch: 
+          name: "Enable ${zone_5_name}"
+          id: irrigation_controller_enable_5
+        run_duration_number: ${zone_5_valve_id}
+        valve_switch_id: irrigation_controller_5
+      - valve_switch: ${zone_6_name}
+        enable_switch: 
+          name: "Enable ${zone_6_name}"
+          id: irrigation_controller_enable_6
+        run_duration_number: ${zone_6_valve_id}
+        valve_switch_id: irrigation_controller_6
+      - valve_switch: ${zone_7_name}
+        enable_switch: 
+          name: "Enable ${zone_7_name}"
+          id: irrigation_controller_enable_7
+        run_duration_number: ${zone_7_valve_id}
+        valve_switch_id: irrigation_controller_7
+      - valve_switch: ${zone_8_name}
+        enable_switch: 
+          name: "Enable ${zone_8_name}"
+          id: irrigation_controller_enable_8
+        run_duration_number: ${zone_8_valve_id}
+        valve_switch_id: irrigation_controller_8
+      # Expansion Board 1 - Zones 9-16 (address 0x20)
+      - valve_switch: "Zone 9"
+        enable_switch: 
+          name: "Enable Zone 9"
+          id: ext_zone_enable_9
+        run_duration_number: ext_zone_9_duration
+        valve_switch_id: ext_zone_9_switch
+      - valve_switch: "Zone 10"
+        enable_switch: 
+          name: "Enable Zone 10"
+          id: ext_zone_enable_10
+        run_duration_number: ext_zone_10_duration
+        valve_switch_id: ext_zone_10_switch
+      - valve_switch: "Zone 11"
+        enable_switch: 
+          name: "Enable Zone 11"
+          id: ext_zone_enable_11
+        run_duration_number: ext_zone_11_duration
+        valve_switch_id: ext_zone_11_switch
+      - valve_switch: "Zone 12"
+        enable_switch: 
+          name: "Enable Zone 12"
+          id: ext_zone_enable_12
+        run_duration_number: ext_zone_12_duration
+        valve_switch_id: ext_zone_12_switch
+      - valve_switch: "Zone 13"
+        enable_switch: 
+          name: "Enable Zone 13"
+          id: ext_zone_enable_13
+        run_duration_number: ext_zone_13_duration
+        valve_switch_id: ext_zone_13_switch
+      - valve_switch: "Zone 14"
+        enable_switch: 
+          name: "Enable Zone 14"
+          id: ext_zone_enable_14
+        run_duration_number: ext_zone_14_duration
+        valve_switch_id: ext_zone_14_switch
+      - valve_switch: "Zone 15"
+        enable_switch: 
+          name: "Enable Zone 15"
+          id: ext_zone_enable_15
+        run_duration_number: ext_zone_15_duration
+        valve_switch_id: ext_zone_15_switch
+      - valve_switch: "Zone 16"
+        enable_switch: 
+          name: "Enable Zone 16"
+          id: ext_zone_enable_16
+        run_duration_number: ext_zone_16_duration
+        valve_switch_id: ext_zone_16_switch
+      # Expansion Board 2 - Zones 17-24 (address 0x21)
+      - valve_switch: "Zone 17"
+        enable_switch: 
+          name: "Enable Zone 17"
+          id: ext_zone_enable_17
+        run_duration_number: ext_zone_17_duration
+        valve_switch_id: ext_zone_17_switch
+      - valve_switch: "Zone 18"
+        enable_switch: 
+          name: "Enable Zone 18"
+          id: ext_zone_enable_18
+        run_duration_number: ext_zone_18_duration
+        valve_switch_id: ext_zone_18_switch
+      - valve_switch: "Zone 19"
+        enable_switch: 
+          name: "Enable Zone 19"
+          id: ext_zone_enable_19
+        run_duration_number: ext_zone_19_duration
+        valve_switch_id: ext_zone_19_switch
+      - valve_switch: "Zone 20"
+        enable_switch: 
+          name: "Enable Zone 20"
+          id: ext_zone_enable_20
+        run_duration_number: ext_zone_20_duration
+        valve_switch_id: ext_zone_20_switch
+      - valve_switch: "Zone 21"
+        enable_switch: 
+          name: "Enable Zone 21"
+          id: ext_zone_enable_21
+        run_duration_number: ext_zone_21_duration
+        valve_switch_id: ext_zone_21_switch
+      - valve_switch: "Zone 22"
+        enable_switch: 
+          name: "Enable Zone 22"
+          id: ext_zone_enable_22
+        run_duration_number: ext_zone_22_duration
+        valve_switch_id: ext_zone_22_switch
+      - valve_switch: "Zone 23"
+        enable_switch: 
+          name: "Enable Zone 23"
+          id: ext_zone_enable_23
+        run_duration_number: ext_zone_23_duration
+        valve_switch_id: ext_zone_23_switch
+      - valve_switch: "Zone 24"
+        enable_switch: 
+          name: "Enable Zone 24"
+          id: ext_zone_enable_24
+        run_duration_number: ext_zone_24_duration
+        valve_switch_id: ext_zone_24_switch
+      # Expansion Board 3 - Zones 25-32 (address 0x22)
+      - valve_switch: "Zone 25"
+        enable_switch: 
+          name: "Enable Zone 25"
+          id: ext_zone_enable_25
+        run_duration_number: ext_zone_25_duration
+        valve_switch_id: ext_zone_25_switch
+      - valve_switch: "Zone 26"
+        enable_switch: 
+          name: "Enable Zone 26"
+          id: ext_zone_enable_26
+        run_duration_number: ext_zone_26_duration
+        valve_switch_id: ext_zone_26_switch
+      - valve_switch: "Zone 27"
+        enable_switch: 
+          name: "Enable Zone 27"
+          id: ext_zone_enable_27
+        run_duration_number: ext_zone_27_duration
+        valve_switch_id: ext_zone_27_switch
+      - valve_switch: "Zone 28"
+        enable_switch: 
+          name: "Enable Zone 28"
+          id: ext_zone_enable_28
+        run_duration_number: ext_zone_28_duration
+        valve_switch_id: ext_zone_28_switch
+      - valve_switch: "Zone 29"
+        enable_switch: 
+          name: "Enable Zone 29"
+          id: ext_zone_enable_29
+        run_duration_number: ext_zone_29_duration
+        valve_switch_id: ext_zone_29_switch
+      - valve_switch: "Zone 30"
+        enable_switch: 
+          name: "Enable Zone 30"
+          id: ext_zone_enable_30
+        run_duration_number: ext_zone_30_duration
+        valve_switch_id: ext_zone_30_switch
+      - valve_switch: "Zone 31"
+        enable_switch: 
+          name: "Enable Zone 31"
+          id: ext_zone_enable_31
+        run_duration_number: ext_zone_31_duration
+        valve_switch_id: ext_zone_31_switch
+      - valve_switch: "Zone 32"
+        enable_switch: 
+          name: "Enable Zone 32"
+          id: ext_zone_enable_32
+        run_duration_number: ext_zone_32_duration
+        valve_switch_id: ext_zone_32_switch
+
+# Buttons
+button:
+  - platform: template
+    id: sprinkler_pause
+    name: "Pause"
+    icon: "mdi:pause"
+    on_press:
+      then:
+        - text_sensor.template.publish:
+            id: valve_status
+            state: "Paused"
+        - sprinkler.pause: ${devicename}
+
+  - platform: template
+    id: rescan_i2c
+    name: "Rescan Expansion Boards"
+    icon: "mdi:refresh"
+    entity_category: config
+    on_press:
+      then:
+        - script.execute: detect_expansion_boards
+
+  - platform: restart
+    id: restart_button
+    name: "Restart"
+
+# Scripts
+script:
+  - id: detect_expansion_boards
+    then:
+      - lambda: |-
+          ESP_LOGI("i2c_detect", "Scanning for expansion boards...");
+          
+          // Check for board at 0x20 (zones 9-16)
+          uint8_t addr1 = 0x20;
+          auto err1 = id(i2c_bus).write(addr1, nullptr, 0);
+          id(board1_detected) = (err1 == esphome::i2c::ERROR_OK);
+          ESP_LOGI("i2c_detect", "Board 1 (0x20): %s", id(board1_detected) ? "DETECTED" : "NOT FOUND");
+          
+          // Check for board at 0x21 (zones 17-24)
+          uint8_t addr2 = 0x21;
+          auto err2 = id(i2c_bus).write(addr2, nullptr, 0);
+          id(board2_detected) = (err2 == esphome::i2c::ERROR_OK);
+          ESP_LOGI("i2c_detect", "Board 2 (0x21): %s", id(board2_detected) ? "DETECTED" : "NOT FOUND");
+          
+          // Check for board at 0x22 (zones 25-32)
+          uint8_t addr3 = 0x22;
+          auto err3 = id(i2c_bus).write(addr3, nullptr, 0);
+          id(board3_detected) = (err3 == esphome::i2c::ERROR_OK);
+          ESP_LOGI("i2c_detect", "Board 3 (0x22): %s", id(board3_detected) ? "DETECTED" : "NOT FOUND");
+          
+          // Disable zones on missing boards
+          if (!id(board1_detected)) {
+            ESP_LOGI("i2c_detect", "Disabling zones 9-16");
+            id(ext_zone_enable_9).turn_off();
+            id(ext_zone_enable_10).turn_off();
+            id(ext_zone_enable_11).turn_off();
+            id(ext_zone_enable_12).turn_off();
+            id(ext_zone_enable_13).turn_off();
+            id(ext_zone_enable_14).turn_off();
+            id(ext_zone_enable_15).turn_off();
+            id(ext_zone_enable_16).turn_off();
+          }
+          
+          if (!id(board2_detected)) {
+            ESP_LOGI("i2c_detect", "Disabling zones 17-24");
+            id(ext_zone_enable_17).turn_off();
+            id(ext_zone_enable_18).turn_off();
+            id(ext_zone_enable_19).turn_off();
+            id(ext_zone_enable_20).turn_off();
+            id(ext_zone_enable_21).turn_off();
+            id(ext_zone_enable_22).turn_off();
+            id(ext_zone_enable_23).turn_off();
+            id(ext_zone_enable_24).turn_off();
+          }
+          
+          if (!id(board3_detected)) {
+            ESP_LOGI("i2c_detect", "Disabling zones 25-32");
+            id(ext_zone_enable_25).turn_off();
+            id(ext_zone_enable_26).turn_off();
+            id(ext_zone_enable_27).turn_off();
+            id(ext_zone_enable_28).turn_off();
+            id(ext_zone_enable_29).turn_off();
+            id(ext_zone_enable_30).turn_off();
+            id(ext_zone_enable_31).turn_off();
+            id(ext_zone_enable_32).turn_off();
+          }
+      - component.update: detected_zones
+
+  - id: run_all_zones
+    then:
+      - logger.log: "Starting scheduled irrigation cycle"
+      - switch.turn_on: main_switch
+
+  - id: check_pump_off
+    then:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = 
+                  id(irrigation_controller_1).state || id(irrigation_controller_2).state || 
+                  id(irrigation_controller_3).state || id(irrigation_controller_4).state || 
+                  id(irrigation_controller_5).state || id(irrigation_controller_6).state || 
+                  id(irrigation_controller_7).state ||
+                  id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || 
+                  id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || 
+                  id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || 
+                  id(ext_zone_15_switch).state || id(ext_zone_16_switch).state ||
+                  id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || 
+                  id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || 
+                  id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || 
+                  id(ext_zone_23_switch).state || id(ext_zone_24_switch).state ||
+                  id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || 
+                  id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || 
+                  id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || 
+                  id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) {
+                  id(irrigation_controller_8).turn_off();
+                }
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+
+# Switches - Template switches for schedule
+switch:
+  - platform: template
+    id: schedule_enabled
+    name: "Schedule Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar-check"
+
+  - platform: template
+    id: use_12hour_format
+    name: "Use 12-Hour Time Format"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: "mdi:clock-time-twelve"
+
+  - platform: template
+    id: monday_enabled
+    name: "Schedule: Monday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: tuesday_enabled
+    name: "Schedule: Tuesday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: wednesday_enabled
+    name: "Schedule: Wednesday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: thursday_enabled
+    name: "Schedule: Thursday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: friday_enabled
+    name: "Schedule: Friday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: saturday_enabled
+    name: "Schedule: Saturday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  - platform: template
+    id: sunday_enabled
+    name: "Schedule: Sunday"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:calendar"
+
+  # Main board relay switches (zones 1-8)
+  - platform: gpio
+    id: irrigation_controller_1
+    name: "Relay 1"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO45
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_1_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_1).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_2).state || id(irrigation_controller_3).state || id(irrigation_controller_4).state || id(irrigation_controller_5).state || id(irrigation_controller_6).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_2
+    name: "Relay 2"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO35
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_2_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_2).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_3).state || id(irrigation_controller_4).state || id(irrigation_controller_5).state || id(irrigation_controller_6).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_3
+    name: "Relay 3"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO36
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_3_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_3).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_2).state || id(irrigation_controller_4).state || id(irrigation_controller_5).state || id(irrigation_controller_6).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_4
+    name: "Relay 4"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO37
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_4_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_4).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_2).state || id(irrigation_controller_3).state || id(irrigation_controller_5).state || id(irrigation_controller_6).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_5
+    name: "Relay 5"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO38
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_5_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_5).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_2).state || id(irrigation_controller_3).state || id(irrigation_controller_4).state || id(irrigation_controller_6).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_6
+    name: "Relay 6"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO39
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_6_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_6).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_2).state || id(irrigation_controller_3).state || id(irrigation_controller_4).state || id(irrigation_controller_5).state || id(irrigation_controller_7).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_7
+    name: "Relay 7"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO40
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "${zone_7_name} Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(irrigation_controller_7).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - lambda: |-
+                bool any_active = id(irrigation_controller_1).state || id(irrigation_controller_2).state || id(irrigation_controller_3).state || id(irrigation_controller_4).state || id(irrigation_controller_5).state || id(irrigation_controller_6).state || id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || id(ext_zone_15_switch).state || id(ext_zone_16_switch).state || id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || id(ext_zone_23_switch).state || id(ext_zone_24_switch).state || id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
+                if (!any_active) id(irrigation_controller_8).turn_off();
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_off: irrigation_controller_8
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: irrigation_controller_8
+    name: "Relay 8"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin: 
+      number: GPIO41
+      inverted: false
+    on_turn_on:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Zone";'
+          then:
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "${zone_8_name} Active"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(zone8_mode).state == "Master Valve";'
+                then:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Master Valve Open"
+                else:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Pump Running"
+    on_turn_off:
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Zone";'
+          then:
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "Idle"
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(zone8_mode).state == "Master Valve";'
+                then:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Master Valve Closed"
+                else:
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Pump Stopped"
+
+  # Expansion board switches (zones 9-32) - simplified template
+  # Board 1 - Zones 9-16
+  - platform: gpio
+    id: ext_zone_9_switch
+    name: "Relay Ext 9"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 0
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 9 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_9_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_10_switch
+    name: "Relay Ext 10"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 1
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 10 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_10_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_11_switch
+    name: "Relay Ext 11"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 2
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 11 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_11_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_12_switch
+    name: "Relay Ext 12"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 3
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 12 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_12_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_13_switch
+    name: "Relay Ext 13"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 4
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 13 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_13_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_14_switch
+    name: "Relay Ext 14"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 5
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 14 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_14_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_15_switch
+    name: "Relay Ext 15"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 6
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 15 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_15_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_16_switch
+    name: "Relay Ext 16"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_1
+      number: 7
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 16 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_16_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  # Board 2 - Zones 17-24
+  - platform: gpio
+    id: ext_zone_17_switch
+    name: "Relay Ext 17"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 0
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 17 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_17_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_18_switch
+    name: "Relay Ext 18"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 1
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 18 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_18_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_19_switch
+    name: "Relay Ext 19"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 2
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 19 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_19_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_20_switch
+    name: "Relay Ext 20"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 3
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 20 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_20_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_21_switch
+    name: "Relay Ext 21"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 4
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 21 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_21_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_22_switch
+    name: "Relay Ext 22"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 5
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 22 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_22_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_23_switch
+    name: "Relay Ext 23"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 6
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 23 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_23_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_24_switch
+    name: "Relay Ext 24"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_2
+      number: 7
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 24 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_24_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  # Board 3 - Zones 25-32
+  - platform: gpio
+    id: ext_zone_25_switch
+    name: "Relay Ext 25"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 0
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 25 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_25_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_26_switch
+    name: "Relay Ext 26"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 1
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 26 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_26_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_27_switch
+    name: "Relay Ext 27"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 2
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 27 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_27_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_28_switch
+    name: "Relay Ext 28"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 3
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 28 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_28_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_29_switch
+    name: "Relay Ext 29"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 4
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 29 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_29_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_30_switch
+    name: "Relay Ext 30"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 5
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 30 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_30_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_31_switch
+    name: "Relay Ext 31"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 6
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 31 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_31_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
+
+  - platform: gpio
+    id: ext_zone_32_switch
+    name: "Relay Ext 32"
+    restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
+    pin:
+      mcp23xxx: mcp_board_3
+      number: 7
+      mode: OUTPUT
+      inverted: false
+    on_turn_on:
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Zone 32 Active"
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Master Valve";'
+          then:
+            - switch.turn_on: irrigation_controller_8
+      - if:
+          condition:
+            lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
+          then:
+            - delay: 2s
+            - lambda: 'if (id(ext_zone_32_switch).state) id(irrigation_controller_8).turn_on();'
+    on_turn_off:
+      - script.execute: check_pump_off
+      - text_sensor.template.publish:
+          id: valve_status
+          state: "Idle"
