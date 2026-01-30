@@ -13,7 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
-  software_version: "1.2.0"
+  software_version: "1.2.1"
   sensor_update_frequency: "10s"
   log_level: "INFO"
   devicename: irrigation_controller
@@ -60,8 +60,21 @@ api:
   id: api_server
 
 ota:
-  id: ota_component
-  platform: esphome
+  - id: ota_component
+    platform: esphome
+  - id: ota_http_request
+    platform: http_request
+
+# HTTP request component for firmware updates
+http_request:
+  id: http_request_component
+
+# Firmware update from GitHub
+update:
+  - platform: http_request
+    id: firmware_update
+    name: "Firmware Update"
+    source: https://raw.githubusercontent.com/FluxOpenHome/IrrigationController/main/manifest.json
 
 dashboard_import:
   package_import_url: github://FluxOpenHome/IrrigationController/IrrigationControllerMain.yaml@main
