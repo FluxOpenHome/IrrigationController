@@ -16,25 +16,13 @@ substitutions:
   software_version: "1.2.0"
   sensor_update_frequency: "10s"
   log_level: "INFO"
-  zone_1_valve_id: valve_0
-  zone_2_valve_id: valve_1
-  zone_3_valve_id: valve_2
-  zone_4_valve_id: valve_3
-  zone_5_valve_id: valve_4
-  zone_6_valve_id: valve_5
-  zone_7_valve_id: valve_6
-  zone_8_valve_id: valve_7
   devicename: irrigation_controller
   upper_devicename: "Irrigation Controller"
-  uom: "Min"
 
 esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
-  # Automatically add the mac address to the name
-  # so you can use a single firmware for all devices
   name_add_mac_suffix: true
-  # Project information for Made for ESPHome
   project:
     name: "flux_open_home.irrigation_controller"
     version: "${software_version}"
@@ -54,7 +42,6 @@ esphome:
           green: 0%
           blue: 100%
           effect: "Pulse"
-      # Auto-detect expansion boards and disable zones on missing boards
       - delay: 2s
       - script.execute: detect_expansion_boards
 
@@ -63,33 +50,25 @@ esp32:
   framework:
     type: esp-idf
 
-# Enable logging
 logger:
   id: logger_component
   level: ${log_level}
   logs:
     text_sensor: WARN
 
-# API is required for Home Assistant integration and dashboard import
-# No encryption key - user will set their own after adoption
 api:
   id: api_server
 
-# OTA is required for Over-the-Air updating
-# No password - user will set their own after adoption
 ota:
   id: ota_component
   platform: esphome
 
-# Dashboard import for ESPHome adoption
-# Update this URL to point to your public GitHub repository
 dashboard_import:
-  package_import_url: github://fluxopenhome/irrigation-controller/irrigation_controller.yaml@main
+  package_import_url: github://FluxOpenHome/IrrigationController/IrrigationControllerMain.yaml@main
   import_full_config: true
 
 wifi:
   id: wifi_component
-  # Set up a wifi access point for initial provisioning
   ap:
     ssid: "${name}"
     password: "12345678"
@@ -110,31 +89,25 @@ wifi:
         blue: 100%
         effect: "Pulse"
 
-# Captive portal for Wi-Fi configuration via AP
 captive_portal:
   id: captive_portal_component
 
-# Improv via BLE for Wi-Fi provisioning (ESP32)
 esp32_improv:
   id: esp32_improv_component
   authorizer: none
 
-# Improv via Serial for Wi-Fi provisioning
 improv_serial:
   id: improv_serial_component
   next_url: http://{{ip_address}}
 
-# Web server for local access
 web_server:
   id: web_server_component
   port: 80
 
-# Time from Home Assistant
 time:
   - platform: homeassistant
     id: homeassistant_time
 
-# Global variables for expansion board detection
 globals:
   - id: board1_detected
     type: bool
@@ -148,15 +121,21 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: user_auto_advance_pref
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+  - id: scheduled_run_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
-# I2C bus for expansion boards
 i2c:
   id: i2c_bus
   sda: GPIO8
   scl: GPIO9
   scan: true
 
-# MCP23017 expansion boards (optional hardware)
 mcp23017:
   - id: mcp_board_1
     address: 0x20
@@ -165,7 +144,6 @@ mcp23017:
   - id: mcp_board_3
     address: 0x22
 
-# Status LED (WS2812)
 light:
   - platform: esp32_rmt_led_strip
     id: status_led
@@ -180,7 +158,6 @@ light:
           transition_length: 1s
           update_interval: 1s
 
-# Schedule start times (text inputs)
 text:
   - platform: template
     id: schedule_start_time_1
@@ -230,7 +207,6 @@ text:
     initial_value: ""
     icon: "mdi:clock-start"
 
-# Zone 8 mode selector
 select:
   - platform: template
     id: zone8_mode
@@ -238,7 +214,7 @@ select:
     optimistic: true
     restore_value: true
     entity_category: config
-    initial_option: "Zone"
+    initial_option: "Pump Start Relay"
     icon: "mdi:tune-variant"
     options:
       - "Zone"
@@ -246,13 +222,18 @@ select:
       - "Pump Start Relay"
     on_value:
       - lambda: |-
-          if (x == "Pump Start Relay" && id(irrigation_controller_enable_8).state) {
-            id(irrigation_controller_enable_8).turn_off();
-          } else if (x != "Pump Start Relay" && !id(irrigation_controller_enable_8).state) {
-            id(irrigation_controller_enable_8).turn_on();
+          if (x == "Zone") {
+            // Zone mode - enable the zone if it was disabled
+            if (!id(irrigation_controller_enable_8).state) {
+              id(irrigation_controller_enable_8).turn_on();
+            }
+          } else {
+            // Master Valve or Pump Start Relay - disable the zone
+            if (id(irrigation_controller_enable_8).state) {
+              id(irrigation_controller_enable_8).turn_off();
+            }
           }
 
-# Text sensors for status and info
 text_sensor:
   - platform: version
     id: esphome_version
@@ -321,7 +302,6 @@ text_sensor:
       result += ")";
       return result;
 
-# Sensors for uptime and signal
 sensor:
   - platform: uptime
     id: uptime_sensor
@@ -332,152 +312,8 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
-# Zone run duration controls
+# Only non-zone numbers here
 number:
-  - platform: template
-    id: ${zone_1_valve_id}
-    name: ${zone_1_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 0
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_2_valve_id}
-    name: ${zone_2_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 1
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_3_valve_id}
-    name: ${zone_3_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 2
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_4_valve_id}
-    name: ${zone_4_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 3
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_5_valve_id}
-    name: ${zone_5_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 4
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_6_valve_id}
-    name: ${zone_6_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 5
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_7_valve_id}
-    name: ${zone_7_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 6
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ${zone_8_valve_id}
-    name: ${zone_8_name}
-    min_value: 1
-    max_value: 120
-    step: 1
-    unit_of_measurement: ${uom}
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 7
-          run_duration: !lambda 'return x * 60;'
-
   - platform: template
     id: sprinkler_ctrlr_repeat_cycles
     name: "Repeat Cycles"
@@ -492,448 +328,22 @@ number:
           id: ${devicename}
           repeat: !lambda 'return x;'
 
-  # Expansion zone durations (9-32)
-  - platform: template
-    id: ext_zone_9_duration
-    name: "Zone 9"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 8
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_10_duration
-    name: "Zone 10"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 9
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_11_duration
-    name: "Zone 11"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 10
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_12_duration
-    name: "Zone 12"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 11
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_13_duration
-    name: "Zone 13"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 12
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_14_duration
-    name: "Zone 14"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 13
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_15_duration
-    name: "Zone 15"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 14
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_16_duration
-    name: "Zone 16"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 15
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_17_duration
-    name: "Zone 17"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 16
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_18_duration
-    name: "Zone 18"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 17
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_19_duration
-    name: "Zone 19"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 18
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_20_duration
-    name: "Zone 20"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 19
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_21_duration
-    name: "Zone 21"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 20
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_22_duration
-    name: "Zone 22"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 21
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_23_duration
-    name: "Zone 23"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 22
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_24_duration
-    name: "Zone 24"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 23
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_25_duration
-    name: "Zone 25"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 24
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_26_duration
-    name: "Zone 26"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 25
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_27_duration
-    name: "Zone 27"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 26
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_28_duration
-    name: "Zone 28"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 27
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_29_duration
-    name: "Zone 29"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 28
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_30_duration
-    name: "Zone 30"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 29
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_31_duration
-    name: "Zone 31"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 30
-          run_duration: !lambda 'return x * 60;'
-
-  - platform: template
-    id: ext_zone_32_duration
-    name: "Zone 32"
-    min_value: 1
-    max_value: 60
-    step: 1
-    unit_of_measurement: Min
-    icon: "mdi:timer-outline"
-    mode: box
-    optimistic: true
-    restore_value: true
-    initial_value: 2
-    set_action:
-      - sprinkler.set_valve_run_duration:
-          id: ${devicename}
-          valve_number: 31
-          run_duration: !lambda 'return x * 60;'
-
 # Sprinkler controller with all 32 zones
+# Duration entities are created inline with proper naming
 sprinkler:
   - id: ${devicename}
     main_switch:
       name: "Start/Stop/Resume"
       id: main_switch
+      on_turn_off:
+        - script.execute: handle_cycle_complete
     auto_advance_switch: 
       name: "Auto Advance"
       id: auto_advance_switch
+      on_turn_on:
+        - script.execute: save_auto_advance_on
+      on_turn_off:
+        - script.execute: save_auto_advance_off
     valve_open_delay: 3s
     repeat_number:
       name: "Repeat"
@@ -944,199 +354,358 @@ sprinkler:
         enable_switch: 
           name: "Enable ${zone_1_name}"
           id: irrigation_controller_enable_1
-        run_duration_number: ${zone_1_valve_id}
+        run_duration_number:
+          name: "Zone 1 Duration"
+          id: zone_1_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_1
       - valve_switch: ${zone_2_name}
         enable_switch: 
           name: "Enable ${zone_2_name}"
           id: irrigation_controller_enable_2
-        run_duration_number: ${zone_2_valve_id}
+        run_duration_number:
+          name: "Zone 2 Duration"
+          id: zone_2_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_2
       - valve_switch: ${zone_3_name}
         enable_switch: 
           name: "Enable ${zone_3_name}"
           id: irrigation_controller_enable_3
-        run_duration_number: ${zone_3_valve_id}
+        run_duration_number:
+          name: "Zone 3 Duration"
+          id: zone_3_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_3
       - valve_switch: ${zone_4_name}
         enable_switch: 
           name: "Enable ${zone_4_name}"
           id: irrigation_controller_enable_4
-        run_duration_number: ${zone_4_valve_id}
+        run_duration_number:
+          name: "Zone 4 Duration"
+          id: zone_4_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_4
       - valve_switch: ${zone_5_name}
         enable_switch: 
           name: "Enable ${zone_5_name}"
           id: irrigation_controller_enable_5
-        run_duration_number: ${zone_5_valve_id}
+        run_duration_number:
+          name: "Zone 5 Duration"
+          id: zone_5_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_5
       - valve_switch: ${zone_6_name}
         enable_switch: 
           name: "Enable ${zone_6_name}"
           id: irrigation_controller_enable_6
-        run_duration_number: ${zone_6_valve_id}
+        run_duration_number:
+          name: "Zone 6 Duration"
+          id: zone_6_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_6
       - valve_switch: ${zone_7_name}
         enable_switch: 
           name: "Enable ${zone_7_name}"
           id: irrigation_controller_enable_7
-        run_duration_number: ${zone_7_valve_id}
+        run_duration_number:
+          name: "Zone 7 Duration"
+          id: zone_7_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_7
       - valve_switch: ${zone_8_name}
         enable_switch: 
           name: "Enable ${zone_8_name}"
           id: irrigation_controller_enable_8
-        run_duration_number: ${zone_8_valve_id}
+        run_duration_number:
+          name: "Zone 8 Duration"
+          id: zone_8_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_8
       # Expansion Board 1 - Zones 9-16 (address 0x20)
       - valve_switch: "Zone 9"
         enable_switch: 
           name: "Enable Zone 9"
           id: ext_zone_enable_9
-        run_duration_number: ext_zone_9_duration
+        run_duration_number:
+          name: "Zone 9 Duration"
+          id: zone_9_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_9_switch
       - valve_switch: "Zone 10"
         enable_switch: 
           name: "Enable Zone 10"
           id: ext_zone_enable_10
-        run_duration_number: ext_zone_10_duration
+        run_duration_number:
+          name: "Zone 10 Duration"
+          id: zone_10_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_10_switch
       - valve_switch: "Zone 11"
         enable_switch: 
           name: "Enable Zone 11"
           id: ext_zone_enable_11
-        run_duration_number: ext_zone_11_duration
+        run_duration_number:
+          name: "Zone 11 Duration"
+          id: zone_11_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_11_switch
       - valve_switch: "Zone 12"
         enable_switch: 
           name: "Enable Zone 12"
           id: ext_zone_enable_12
-        run_duration_number: ext_zone_12_duration
+        run_duration_number:
+          name: "Zone 12 Duration"
+          id: zone_12_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_12_switch
       - valve_switch: "Zone 13"
         enable_switch: 
           name: "Enable Zone 13"
           id: ext_zone_enable_13
-        run_duration_number: ext_zone_13_duration
+        run_duration_number:
+          name: "Zone 13 Duration"
+          id: zone_13_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_13_switch
       - valve_switch: "Zone 14"
         enable_switch: 
           name: "Enable Zone 14"
           id: ext_zone_enable_14
-        run_duration_number: ext_zone_14_duration
+        run_duration_number:
+          name: "Zone 14 Duration"
+          id: zone_14_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_14_switch
       - valve_switch: "Zone 15"
         enable_switch: 
           name: "Enable Zone 15"
           id: ext_zone_enable_15
-        run_duration_number: ext_zone_15_duration
+        run_duration_number:
+          name: "Zone 15 Duration"
+          id: zone_15_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_15_switch
       - valve_switch: "Zone 16"
         enable_switch: 
           name: "Enable Zone 16"
           id: ext_zone_enable_16
-        run_duration_number: ext_zone_16_duration
+        run_duration_number:
+          name: "Zone 16 Duration"
+          id: zone_16_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_16_switch
       # Expansion Board 2 - Zones 17-24 (address 0x21)
       - valve_switch: "Zone 17"
         enable_switch: 
           name: "Enable Zone 17"
           id: ext_zone_enable_17
-        run_duration_number: ext_zone_17_duration
+        run_duration_number:
+          name: "Zone 17 Duration"
+          id: zone_17_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_17_switch
       - valve_switch: "Zone 18"
         enable_switch: 
           name: "Enable Zone 18"
           id: ext_zone_enable_18
-        run_duration_number: ext_zone_18_duration
+        run_duration_number:
+          name: "Zone 18 Duration"
+          id: zone_18_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_18_switch
       - valve_switch: "Zone 19"
         enable_switch: 
           name: "Enable Zone 19"
           id: ext_zone_enable_19
-        run_duration_number: ext_zone_19_duration
+        run_duration_number:
+          name: "Zone 19 Duration"
+          id: zone_19_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_19_switch
       - valve_switch: "Zone 20"
         enable_switch: 
           name: "Enable Zone 20"
           id: ext_zone_enable_20
-        run_duration_number: ext_zone_20_duration
+        run_duration_number:
+          name: "Zone 20 Duration"
+          id: zone_20_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_20_switch
       - valve_switch: "Zone 21"
         enable_switch: 
           name: "Enable Zone 21"
           id: ext_zone_enable_21
-        run_duration_number: ext_zone_21_duration
+        run_duration_number:
+          name: "Zone 21 Duration"
+          id: zone_21_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_21_switch
       - valve_switch: "Zone 22"
         enable_switch: 
           name: "Enable Zone 22"
           id: ext_zone_enable_22
-        run_duration_number: ext_zone_22_duration
+        run_duration_number:
+          name: "Zone 22 Duration"
+          id: zone_22_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_22_switch
       - valve_switch: "Zone 23"
         enable_switch: 
           name: "Enable Zone 23"
           id: ext_zone_enable_23
-        run_duration_number: ext_zone_23_duration
+        run_duration_number:
+          name: "Zone 23 Duration"
+          id: zone_23_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_23_switch
       - valve_switch: "Zone 24"
         enable_switch: 
           name: "Enable Zone 24"
           id: ext_zone_enable_24
-        run_duration_number: ext_zone_24_duration
+        run_duration_number:
+          name: "Zone 24 Duration"
+          id: zone_24_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_24_switch
       # Expansion Board 3 - Zones 25-32 (address 0x22)
       - valve_switch: "Zone 25"
         enable_switch: 
           name: "Enable Zone 25"
           id: ext_zone_enable_25
-        run_duration_number: ext_zone_25_duration
+        run_duration_number:
+          name: "Zone 25 Duration"
+          id: zone_25_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_25_switch
       - valve_switch: "Zone 26"
         enable_switch: 
           name: "Enable Zone 26"
           id: ext_zone_enable_26
-        run_duration_number: ext_zone_26_duration
+        run_duration_number:
+          name: "Zone 26 Duration"
+          id: zone_26_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_26_switch
       - valve_switch: "Zone 27"
         enable_switch: 
           name: "Enable Zone 27"
           id: ext_zone_enable_27
-        run_duration_number: ext_zone_27_duration
+        run_duration_number:
+          name: "Zone 27 Duration"
+          id: zone_27_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_27_switch
       - valve_switch: "Zone 28"
         enable_switch: 
           name: "Enable Zone 28"
           id: ext_zone_enable_28
-        run_duration_number: ext_zone_28_duration
+        run_duration_number:
+          name: "Zone 28 Duration"
+          id: zone_28_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_28_switch
       - valve_switch: "Zone 29"
         enable_switch: 
           name: "Enable Zone 29"
           id: ext_zone_enable_29
-        run_duration_number: ext_zone_29_duration
+        run_duration_number:
+          name: "Zone 29 Duration"
+          id: zone_29_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_29_switch
       - valve_switch: "Zone 30"
         enable_switch: 
           name: "Enable Zone 30"
           id: ext_zone_enable_30
-        run_duration_number: ext_zone_30_duration
+        run_duration_number:
+          name: "Zone 30 Duration"
+          id: zone_30_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_30_switch
       - valve_switch: "Zone 31"
         enable_switch: 
           name: "Enable Zone 31"
           id: ext_zone_enable_31
-        run_duration_number: ext_zone_31_duration
+        run_duration_number:
+          name: "Zone 31 Duration"
+          id: zone_31_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_31_switch
       - valve_switch: "Zone 32"
         enable_switch: 
           name: "Enable Zone 32"
           id: ext_zone_enable_32
-        run_duration_number: ext_zone_32_duration
+        run_duration_number:
+          name: "Zone 32 Duration"
+          id: zone_32_duration
+          initial_value: 2
+          unit_of_measurement: min
+          icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_32_switch
 
-# Buttons
 button:
   - platform: template
     id: sprinkler_pause
@@ -1162,32 +731,54 @@ button:
     id: restart_button
     name: "Restart"
 
-# Scripts
 script:
+  - id: handle_cycle_complete
+    then:
+      - lambda: |-
+          // When cycle completes, restore user's auto_advance preference
+          if (id(scheduled_run_active)) {
+            id(scheduled_run_active) = false;
+            id(auto_advance_switch).turn_off();
+          } else if (id(user_auto_advance_pref)) {
+            id(auto_advance_switch).turn_on();
+          }
+
+  - id: save_auto_advance_on
+    then:
+      - lambda: |-
+          // Only save preference if not a scheduled run
+          if (!id(scheduled_run_active)) {
+            id(user_auto_advance_pref) = true;
+          }
+
+  - id: save_auto_advance_off
+    then:
+      - lambda: |-
+          // Only save preference if not a scheduled run and main_switch is off
+          if (!id(scheduled_run_active) && !id(main_switch).state) {
+            id(user_auto_advance_pref) = false;
+          }
+
   - id: detect_expansion_boards
     then:
       - lambda: |-
           ESP_LOGI("i2c_detect", "Scanning for expansion boards...");
           
-          // Check for board at 0x20 (zones 9-16)
           uint8_t addr1 = 0x20;
           auto err1 = id(i2c_bus).write(addr1, nullptr, 0);
           id(board1_detected) = (err1 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 1 (0x20): %s", id(board1_detected) ? "DETECTED" : "NOT FOUND");
           
-          // Check for board at 0x21 (zones 17-24)
           uint8_t addr2 = 0x21;
           auto err2 = id(i2c_bus).write(addr2, nullptr, 0);
           id(board2_detected) = (err2 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 2 (0x21): %s", id(board2_detected) ? "DETECTED" : "NOT FOUND");
           
-          // Check for board at 0x22 (zones 25-32)
           uint8_t addr3 = 0x22;
           auto err3 = id(i2c_bus).write(addr3, nullptr, 0);
           id(board3_detected) = (err3 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 3 (0x22): %s", id(board3_detected) ? "DETECTED" : "NOT FOUND");
           
-          // Disable zones on missing boards
           if (!id(board1_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 9-16");
             id(ext_zone_enable_9).turn_off();
@@ -1228,6 +819,8 @@ script:
   - id: run_all_zones
     then:
       - logger.log: "Starting scheduled irrigation cycle"
+      - lambda: 'id(scheduled_run_active) = true;'
+      - switch.turn_on: auto_advance_switch
       - switch.turn_on: main_switch
 
   - id: check_pump_off
@@ -1263,7 +856,16 @@ script:
           then:
             - switch.turn_off: irrigation_controller_8
 
-# Switches - Template switches for schedule
+# Enforce zone 8 enable state based on mode
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // If zone 8 is not in "Zone" mode, ensure it stays disabled
+          if (id(zone8_mode).state != "Zone" && id(irrigation_controller_enable_8).state) {
+            id(irrigation_controller_enable_8).turn_off();
+          }
+
 switch:
   - platform: template
     id: schedule_enabled
@@ -1329,7 +931,6 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:calendar"
 
-  # Main board relay switches (zones 1-8)
   - platform: gpio
     id: irrigation_controller_1
     name: "Relay 1"
@@ -1659,7 +1260,6 @@ switch:
                       id: valve_status
                       state: "Pump Stopped"
 
-  # Expansion board switches (zones 9-32) - simplified template
   # Board 1 - Zones 9-16
   - platform: gpio
     id: ext_zone_9_switch
