@@ -13,7 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
-  software_version: "1.2.2"
+  software_version: "1.2.3"
   sensor_update_frequency: "10s"
   log_level: "INFO"
   devicename: irrigation_controller
@@ -49,6 +49,11 @@ esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
+    sdkconfig_options:
+      CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN: "16384"
+      CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN: "4096"
+      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: "y"
+      CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL: "y"
 
 logger:
   id: logger_component
@@ -71,6 +76,7 @@ http_request:
   buffer_size_rx: 2048
   buffer_size_tx: 2048
   timeout: 30s
+  follow_redirects: true
 
 # Firmware update from GitHub
 update:
