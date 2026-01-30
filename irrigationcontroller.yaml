@@ -13,7 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
-  software_version: "1.2.3"
+  software_version: "1.2.4"
   sensor_update_frequency: "10s"
   log_level: "INFO"
   devicename: irrigation_controller
