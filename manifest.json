@@ -6,8 +6,8 @@
       "chipFamily": "ESP32-S3",
       "ota": {
         "md5": "f799995eca81df7752bcbdda5f201ea5",
-        "path": "https://raw.githubusercontent.com/FluxOpenHome/IrrigationController/main/releases/download/v1.2.5/125-irrigation-controller-factory.bin",
-        "release_url": "https://github.com/FluxOpenHome/IrrigationController/tree/main/releases/download/v1.2.5",
+        "path": "https://github.com/FluxOpenHome/IrrigationController/releases/download/v1.2.5/125-irrigation-controller-factory.bin",
+        "release_url": "https://github.com/FluxOpenHome/IrrigationController/releases/tag/v1.2.5",
         "summary": "Update 1.2.5"
       }
     }
