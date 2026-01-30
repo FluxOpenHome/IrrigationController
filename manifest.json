@@ -1,0 +1,15 @@
+{
+  "name": "Irrigation Controller",
+  "version": "1.2.0",
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "ota": {
+        "md5": "8b8bb142502369602978f57609eaa7b604795c79",
+        "path": "https://github.com/FluxOpenHome/IrrigationController/releases/download/v1.2.0/irrigation-controller.factory.bin",
+        "release_url": "https://github.com/FluxOpenHome/IrrigationController/releases/tag/v1.2.0",
+        "summary": "Initial release"
+      }
+    }
+  ]
+}
