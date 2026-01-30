@@ -13,7 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
-  software_version: "1.2.5"
+  software_version: "1.2.6"
   sensor_update_frequency: "10s"
   log_level: "INFO"
   devicename: irrigation_controller
@@ -52,6 +52,8 @@ esp32:
     sdkconfig_options:
       CONFIG_MBEDTLS_CERTIFICATE_BUNDLE: "y"
       CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL: "y"
+      CONFIG_HTTP_BUF_SIZE: "16384"
+      CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS: "y"
 
 logger:
   id: logger_component
