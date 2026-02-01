@@ -94,7 +94,6 @@ wifi:
   id: wifi_component
   ap:
     ssid: "${name}"
-    password: "12345678"
   on_connect:
     - light.turn_on:
         id: status_led
