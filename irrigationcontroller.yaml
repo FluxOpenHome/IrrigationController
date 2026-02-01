@@ -44,6 +44,7 @@ esphome:
           effect: "Pulse"
       - delay: 2s
       - script.execute: detect_expansion_boards
+      - script.execute: update_status_led
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -63,12 +64,56 @@ logger:
 
 api:
   id: api_server
+  on_client_connected:
+    - script.execute: update_status_led
+  on_client_disconnected:
+    - script.execute: update_status_led
 
 ota:
   - id: ota_component
     platform: esphome
+    on_begin:
+      - light.turn_on:
+          id: status_led
+          brightness: 80%
+          red: 0%
+          green: 100%
+          blue: 100%
+          effect: "Fast Pulse"
+    on_end:
+      - script.execute: update_status_led
+    on_error:
+      - light.turn_on:
+          id: status_led
+          brightness: 80%
+          red: 100%
+          green: 0%
+          blue: 0%
+          effect: "Fast Pulse"
+      - delay: 5s
+      - script.execute: update_status_led
   - id: ota_http_request
     platform: http_request
+    on_begin:
+      - light.turn_on:
+          id: status_led
+          brightness: 80%
+          red: 0%
+          green: 100%
+          blue: 100%
+          effect: "Fast Pulse"
+    on_end:
+      - script.execute: update_status_led
+    on_error:
+      - light.turn_on:
+          id: status_led
+          brightness: 80%
+          red: 100%
+          green: 0%
+          blue: 0%
+          effect: "Fast Pulse"
+      - delay: 5s
+      - script.execute: update_status_led
 
 # HTTP request component for firmware updates
 http_request:
@@ -95,21 +140,9 @@ wifi:
   ap:
     ssid: "${name}"
   on_connect:
-    - light.turn_on:
-        id: status_led
-        brightness: 80%
-        red: 0%
-        green: 100%
-        blue: 0%
-        effect: "Pulse"
+    - script.execute: update_status_led
   on_disconnect:
-    - light.turn_on:
-        id: status_led
-        brightness: 80%
-        red: 0%
-        green: 0%
-        blue: 100%
-        effect: "Pulse"
+    - script.execute: update_status_led
 
 captive_portal:
   id: captive_portal_component
@@ -140,6 +173,14 @@ globals:
     restore_value: no
     initial_value: 'false'
   - id: board3_detected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: unknown_i2c_device
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: i2c_bus_error
     type: bool
     restore_value: no
     initial_value: 'false'
@@ -179,6 +220,10 @@ light:
           name: "Pulse"
           transition_length: 1s
           update_interval: 1s
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
 
 text:
   - platform: template
@@ -357,8 +402,11 @@ sprinkler:
     main_switch:
       name: "Start/Stop/Resume"
       id: main_switch
+      on_turn_on:
+        - script.execute: update_status_led
       on_turn_off:
         - script.execute: handle_cycle_complete
+        - script.execute: update_status_led
     auto_advance_switch: 
       name: "Auto Advance"
       id: auto_advance_switch
@@ -785,22 +833,46 @@ script:
     then:
       - lambda: |-
           ESP_LOGI("i2c_detect", "Scanning for expansion boards...");
-          
+          id(i2c_bus_error) = false;
+          id(unknown_i2c_device) = false;
+
           uint8_t addr1 = 0x20;
           auto err1 = id(i2c_bus).write(addr1, nullptr, 0);
           id(board1_detected) = (err1 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 1 (0x20): %s", id(board1_detected) ? "DETECTED" : "NOT FOUND");
-          
+
           uint8_t addr2 = 0x21;
           auto err2 = id(i2c_bus).write(addr2, nullptr, 0);
           id(board2_detected) = (err2 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 2 (0x21): %s", id(board2_detected) ? "DETECTED" : "NOT FOUND");
-          
+
           uint8_t addr3 = 0x22;
           auto err3 = id(i2c_bus).write(addr3, nullptr, 0);
           id(board3_detected) = (err3 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 3 (0x22): %s", id(board3_detected) ? "DETECTED" : "NOT FOUND");
-          
+
+          // Scan for unknown I2C devices (common range 0x08-0x77)
+          for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+            if (addr == 0x20 || addr == 0x21 || addr == 0x22) continue;
+            auto err = id(i2c_bus).write(addr, nullptr, 0);
+            if (err == esphome::i2c::ERROR_OK) {
+              ESP_LOGW("i2c_detect", "Unknown I2C device found at address 0x%02X", addr);
+              id(unknown_i2c_device) = true;
+            }
+          }
+
+          // Check for I2C bus error - if all 3 expected boards fail, bus may be broken
+          if (err1 != esphome::i2c::ERROR_OK && err2 != esphome::i2c::ERROR_OK && err3 != esphome::i2c::ERROR_OK) {
+            // Try a known-good address probe to see if bus itself works
+            // If no devices at all respond in the full scan, flag bus error
+            bool any_device = id(unknown_i2c_device);
+            if (!any_device) {
+              // No devices found anywhere on the bus - likely a bus error
+              ESP_LOGW("i2c_detect", "No I2C devices detected on bus - possible bus error");
+              id(i2c_bus_error) = true;
+            }
+          }
+
           if (!id(board1_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 9-16");
             id(ext_zone_enable_9).turn_off();
@@ -812,7 +884,7 @@ script:
             id(ext_zone_enable_15).turn_off();
             id(ext_zone_enable_16).turn_off();
           }
-          
+
           if (!id(board2_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 17-24");
             id(ext_zone_enable_17).turn_off();
@@ -824,7 +896,7 @@ script:
             id(ext_zone_enable_23).turn_off();
             id(ext_zone_enable_24).turn_off();
           }
-          
+
           if (!id(board3_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 25-32");
             id(ext_zone_enable_25).turn_off();
@@ -837,6 +909,84 @@ script:
             id(ext_zone_enable_32).turn_off();
           }
       - component.update: detected_zones
+      - script.execute: update_status_led
+
+  - id: update_status_led
+    then:
+      - lambda: |-
+          // LED Status Priority (highest to lowest):
+          // 1. I2C bus error - Red pulse
+          // 2. OTA update in progress - Cyan fast pulse (handled by OTA triggers)
+          // 3. Unknown I2C device - White pulse
+          // 4. Zone actively running - Solid green (no pulse)
+          // 5. WiFi disconnected - Blue pulse (handled by wifi on_disconnect)
+          // 6. API/HA not connected - Yellow pulse
+          // 7. Captive portal active - Magenta pulse
+          // 8. Normal (WiFi connected, idle) - Green pulse
+
+          if (id(i2c_bus_error)) {
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(1.0, 0.0, 0.0);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          if (id(unknown_i2c_device)) {
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(1.0, 1.0, 1.0);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          // Check if any zone is actively running
+          bool zone_active = id(${devicename}).active_valve().has_value();
+          if (zone_active) {
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(0.0, 1.0, 0.0);
+            call.set_effect("None");
+            call.perform();
+            return;
+          }
+
+          if (!id(wifi_component).is_connected()) {
+            // Check if captive portal is active (AP mode, no WiFi)
+            if (id(captive_portal_component).is_active()) {
+              auto call = id(status_led).turn_on();
+              call.set_brightness(0.8);
+              call.set_rgb(1.0, 0.0, 1.0);
+              call.set_effect("Pulse");
+              call.perform();
+              return;
+            }
+            // WiFi disconnected but not in captive portal
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(0.0, 0.0, 1.0);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          if (!id(api_server).is_connected()) {
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(1.0, 1.0, 0.0);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          // Default: WiFi connected, HA connected, idle - green pulse
+          auto call = id(status_led).turn_on();
+          call.set_brightness(0.8);
+          call.set_rgb(0.0, 1.0, 0.0);
+          call.set_effect("Pulse");
+          call.perform();
 
   - id: run_all_zones
     then:
@@ -887,6 +1037,9 @@ interval:
           if (id(zone8_mode).state != "Zone" && id(irrigation_controller_enable_8).state) {
             id(irrigation_controller_enable_8).turn_off();
           }
+  - interval: 10s
+    then:
+      - script.execute: update_status_led
 
 switch:
   - platform: template
