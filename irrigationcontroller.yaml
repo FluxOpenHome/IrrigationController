@@ -13,6 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
+  rain_sensor_pin: "GPIO4"
   software_version: "1.2.6"
   sensor_update_frequency: "10s"
   log_level: "INFO"
@@ -196,6 +197,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: rain_sensor_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: rain_delay_until
+    type: uint32_t
+    restore_value: yes
+    initial_value: '0'
 
 i2c:
   id: i2c_bus
@@ -321,6 +330,18 @@ select:
     on_value:
       - script.execute: detect_expansion_boards
 
+  - platform: template
+    id: rain_sensor_type
+    name: "Rain Sensor Type"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    initial_option: "Normally Closed (NC)"
+    icon: "mdi:water-alert"
+    options:
+      - "Normally Closed (NC)"
+      - "Normally Open (NO)"
+
 text_sensor:
   - platform: version
     id: esphome_version
@@ -399,6 +420,60 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
+binary_sensor:
+  - platform: gpio
+    id: rain_sensor_raw
+    name: "Rain Sensor"
+    pin:
+      number: ${rain_sensor_pin}
+      mode:
+        input: true
+        pullup: true
+    device_class: moisture
+    filters:
+      - delayed_on: 500ms
+      - delayed_off: 500ms
+    on_state:
+      - lambda: |-
+          // NC sensor: circuit closed when dry (LOW), opens when wet (HIGH with pullup)
+          // NO sensor: circuit open when dry (HIGH with pullup), closes when wet (LOW)
+          bool is_nc = (id(rain_sensor_type).state == "Normally Closed (NC)");
+          bool rain_detected = is_nc ? x : !x;
+          bool was_active = id(rain_sensor_active);
+          id(rain_sensor_active) = rain_detected;
+
+          if (rain_detected && id(rain_sensor_enabled).state) {
+            ESP_LOGI("rain_sensor", "Rain detected! Stopping irrigation.");
+            id(valve_status).publish_state("Rain Detected - Stopped");
+            // Record rain detection time for rain delay feature
+            if (id(homeassistant_time).now().is_valid()) {
+              id(rain_delay_until) = id(homeassistant_time).now().timestamp + (uint32_t)(id(rain_delay_hours).state * 3600);
+              ESP_LOGI("rain_sensor", "Rain delay set for %.0f hours", id(rain_delay_hours).state);
+            }
+            if (id(main_switch).state) {
+              id(main_switch).turn_off();
+            }
+          } else if (!rain_detected && was_active) {
+            ESP_LOGI("rain_sensor", "Rain sensor cleared.");
+            id(valve_status).publish_state("Rain Cleared");
+          }
+
+  - platform: template
+    id: rain_detected
+    name: "Rain Detected"
+    device_class: moisture
+    lambda: |-
+      return id(rain_sensor_active) && id(rain_sensor_enabled).state;
+
+  - platform: template
+    id: rain_delay_active
+    name: "Rain Delay Active"
+    icon: "mdi:timer-sand"
+    lambda: |-
+      if (!id(rain_delay_enabled).state) return false;
+      if (!id(homeassistant_time).now().is_valid()) return false;
+      return id(homeassistant_time).now().timestamp < id(rain_delay_until);
+
 # Only non-zone numbers here
 number:
   - platform: template
@@ -414,6 +489,20 @@ number:
       - sprinkler.set_repeat:
           id: ${devicename}
           repeat: !lambda 'return x;'
+
+  - platform: template
+    id: rain_delay_hours
+    name: "Rain Delay Hours"
+    min_value: 1
+    max_value: 72
+    step: 1
+    mode: box
+    icon: "mdi:clock-alert-outline"
+    optimistic: true
+    restore_value: true
+    initial_value: 48
+    unit_of_measurement: "h"
+    entity_category: config
 
 # Sprinkler controller with all 32 zones
 # Duration entities are created inline with proper naming
@@ -1041,10 +1130,31 @@ script:
 
   - id: run_all_zones
     then:
-      - logger.log: "Starting scheduled irrigation cycle"
-      - lambda: 'id(scheduled_run_active) = true;'
-      - switch.turn_on: auto_advance_switch
-      - switch.turn_on: main_switch
+      - if:
+          condition:
+            lambda: 'return id(rain_sensor_enabled).state && id(rain_sensor_active);'
+          then:
+            - logger.log: "Scheduled irrigation skipped - rain detected"
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "Schedule Skipped - Rain"
+          else:
+            - if:
+                condition:
+                  lambda: |-
+                    if (!id(rain_delay_enabled).state) return false;
+                    if (!id(homeassistant_time).now().is_valid()) return false;
+                    return id(homeassistant_time).now().timestamp < id(rain_delay_until);
+                then:
+                  - logger.log: "Scheduled irrigation skipped - rain delay active"
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Schedule Skipped - Rain Delay"
+                else:
+                  - logger.log: "Starting scheduled irrigation cycle"
+                  - lambda: 'id(scheduled_run_active) = true;'
+                  - switch.turn_on: auto_advance_switch
+                  - switch.turn_on: main_switch
 
   - id: check_pump_off
     then:
@@ -1156,6 +1266,20 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:calendar"
+
+  - platform: template
+    id: rain_sensor_enabled
+    name: "Rain Sensor Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:weather-rainy"
+
+  - platform: template
+    id: rain_delay_enabled
+    name: "Rain Delay Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:timer-sand"
 
   - platform: gpio
     id: irrigation_controller_1

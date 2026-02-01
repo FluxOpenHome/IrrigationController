@@ -4,7 +4,7 @@
 
 User Manual
 
-Version 1.3.0
+Version 1.4.0
 
 *Made for ESPHome*
 
@@ -34,13 +34,15 @@ Version 1.3.0
 
 12\. Scheduling
 
-13\. Expansion Boards
+13\. Rain Sensor
 
-14\. Firmware Updates
+14\. Expansion Boards
 
-15\. Troubleshooting
+15\. Firmware Updates
 
-16\. Version History
+16\. Troubleshooting
+
+17\. Version History
 
 # **1. Overview**
 
@@ -391,7 +393,108 @@ Up to four start times can be configured. Enter times in HH:MM format
 19. The pump/master valve (if configured) runs continuously throughout
     > the schedule
 
-# **13. Expansion Boards**
+# **13. Rain Sensor**
+
+The controller supports an optional wired rain sensor to automatically
+suspend irrigation when rain is detected.
+
+## **Wiring**
+
+Most wired rain sensors are passive devices with two wires. Connect one
+wire to the configured GPIO pin (default: GPIO4) and the other wire to
+GND on the controller. The controller uses an internal pull-up resistor,
+so no external resistor is needed.
+
+To change the GPIO pin, modify the `rain_sensor_pin` substitution in
+your ESPHome configuration.
+
+## **Enabling the Rain Sensor**
+
+In Home Assistant, turn on the "Rain Sensor Enabled" switch. When
+disabled, the rain sensor hardware is still monitored but will not
+affect irrigation operation.
+
+## **Sensor Type (NO/NC)**
+
+Rain sensors come in two wiring configurations:
+
+-   **Normally Closed (NC)**: The circuit is closed when dry and opens
+    when wet. This is the most common type.
+
+-   **Normally Open (NO)**: The circuit is open when dry and closes
+    when wet.
+
+Use the "Rain Sensor Type" selector in Home Assistant to match your
+sensor. The default is Normally Closed (NC).
+
+## **Rain Detection Behavior**
+
+When rain is detected and the rain sensor is enabled:
+
+-   Any actively running irrigation is **immediately stopped**
+
+-   The status displays "Rain Detected - Stopped"
+
+-   Scheduled irrigation will not start while rain is actively detected
+
+When the sensor clears (dries out), the status updates to "Rain
+Cleared" and normal operation resumes (subject to rain delay, if
+enabled).
+
+## **Rain Delay**
+
+The rain delay feature prevents irrigation from resuming too soon after
+rain has stopped. This helps comply with local water conservation
+regulations — for example, some jurisdictions require a 48-hour delay
+after rainfall before automatic irrigation can resume.
+
+### **Configuring Rain Delay:**
+
+1.  Turn on the "Rain Delay Enabled" switch in Home Assistant
+
+2.  Set the "Rain Delay Hours" value (default: 48 hours, range: 1-72
+    hours)
+
+When rain is detected, a delay timer is set for the configured number
+of hours from the time of detection. During the delay period:
+
+-   Scheduled irrigation is skipped with status "Schedule Skipped -
+    Rain Delay"
+
+-   The "Rain Delay Active" sensor shows ON in Home Assistant
+
+-   The delay timer persists across reboots
+
+### **Regulatory Compliance Note:**
+
+Rain sensor and rain delay requirements vary by jurisdiction. Some US
+states (including Florida, California, New Jersey, and Georgia, among
+others) require rain sensors on automatic irrigation systems. California
+specifically requires a 48-hour delay, which is the default setting.
+Users are responsible for verifying and complying with their local
+regulations. Adjust the rain delay hours as needed for your area.
+
+## **Home Assistant Entities**
+
+  -----------------------------------------------------------------------
+  **Entity**                          **Type**
+  ----------------------------------- -----------------------------------
+  Rain Sensor Enabled                 Switch (toggle)
+
+  Rain Delay Enabled                  Switch (toggle)
+
+  Rain Sensor Type                    Select (NC / NO)
+
+  Rain Delay Hours                    Number (1-72, default 48)
+
+  Rain Sensor                         Binary Sensor (raw GPIO state)
+
+  Rain Detected                       Binary Sensor (effective state)
+
+  Rain Delay Active                   Binary Sensor
+  -----------------------------------------------------------------------
+
+# **14. Expansion Boards**
 
 The controller supports up to three optional MCP23017 expansion boards,
 adding 8 zones each. Expansion boards are sequential — Board 2 requires
@@ -452,7 +555,7 @@ is actually detected on the I2C bus:
     all respond on the I2C bus, this indicates a possible wiring fault
     or bus failure.
 
-# **14. Firmware Updates**
+# **15. Firmware Updates**
 
 The controller supports over-the-air (OTA) firmware updates directly
 from Home Assistant.
@@ -472,7 +575,7 @@ an update is available.
 
 23. The device will automatically reboot with the new firmware
 
-# **15. Troubleshooting**
+# **16. Troubleshooting**
 
 ### **Device not connecting to Wi-Fi**
 
@@ -559,7 +662,44 @@ This should NOT happen with firmware v1.3.0+. If you experience this:
 
 -   Check for short circuits on the I2C bus
 
-# **16. Version History**
+### **Rain sensor not detecting rain**
+
+-   Verify "Rain Sensor Enabled" is ON
+
+-   Check the "Rain Sensor Type" setting matches your sensor (NC vs NO)
+
+-   Verify wiring: one wire to the configured GPIO pin, other wire to GND
+
+-   Check the "Rain Sensor" binary sensor in Home Assistant to see the
+    raw hardware state
+
+### **Irrigation not resuming after rain**
+
+-   Check if "Rain Delay Active" is still ON — the delay period may not
+    have elapsed yet
+
+-   Verify "Rain Delay Hours" is set to an appropriate value
+
+-   If you want irrigation to resume immediately after rain clears,
+    turn off "Rain Delay Enabled"
+
+# **17. Version History**
+
+### **v1.4.0**
+
+-   NEW: Rain sensor support with configurable GPIO pin
+
+-   NEW: Normally Open / Normally Closed sensor type selector
+
+-   NEW: Rain Delay feature with configurable delay period (1-72 hours,
+    default 48)
+
+-   NEW: Immediate irrigation shutoff when rain is detected
+
+-   NEW: Scheduled runs skipped during active rain or rain delay
+
+-   NEW: Rain Detected and Rain Delay Active binary sensors for
+    Home Assistant
 
 ### **v1.3.1**
 

@@ -1,0 +1,146 @@
+Flux Open Home Non-Commercial License
+Version 1.0
+
+Copyright (c) 2025 Halterman, Flux Open Home
+All rights reserved.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+   "Software" refers to the Flux Open Home Irrigation Controller firmware,
+   including all source code, configuration files, documentation, and
+   associated materials contained in this repository.
+
+   "Commercial Use" means any use of the Software intended for or directed
+   toward commercial advantage or monetary compensation. This includes, but
+   is not limited to, selling the Software, selling devices pre-loaded with
+   the Software, offering the Software as part of a paid service, or
+   distributing the Software as part of a commercial product.
+
+   "Derivative Work" means any work that is based on or derived from the
+   Software, including modifications, adaptations, translations, or any
+   other form in which the Software may be recast, transformed, or adapted.
+
+2. GRANT OF LICENSE
+
+   Subject to the terms and conditions of this License, the copyright holder
+   hereby grants you a worldwide, royalty-free, non-exclusive license to:
+
+   a) Use the Software for personal, educational, or other non-commercial
+      purposes.
+
+   b) Study, modify, and adapt the Software for your own non-commercial use.
+
+   c) Redistribute the Software and Derivative Works, provided that such
+      redistribution is for non-commercial purposes and complies with the
+      conditions set forth in Section 3.
+
+3. CONDITIONS OF REDISTRIBUTION
+
+   If you redistribute the Software or any Derivative Work, you must:
+
+   a) Include a copy of this License with the distribution.
+
+   b) Provide prominent attribution to Flux Open Home as the original author
+      of the Software.
+
+   c) Clearly indicate any modifications you have made to the Software.
+
+   d) Not use the name "Flux Open Home" or the names of its contributors to
+      endorse or promote Derivative Works without prior written permission.
+
+   e) Not impose any additional restrictions on the rights granted under
+      this License.
+
+4. NON-COMMERCIAL RESTRICTION
+
+   You may NOT use, distribute, or sublicense the Software or any Derivative
+   Work for Commercial Use without prior written permission from the
+   copyright holder.
+
+5. OPEN SOURCE AND END-USER MODIFICATION
+
+   In accordance with the Made for ESPHome program requirements, this
+   Software is provided as open source. End users retain the right to
+   inspect, modify, and update the ESPHome configuration for their own
+   personal use. Nothing in this License shall be construed to restrict an
+   end user's ability to modify the firmware running on their own device.
+
+6. THIRD-PARTY COMPONENTS
+
+   This Software is built upon and integrates with the following open source
+   projects, each of which retains its own license:
+
+   - ESPHome: Licensed under MIT (Python components) and GPLv3 (C++ runtime
+     components). See https://github.com/esphome/esphome for details.
+
+   - Home Assistant: Licensed under the Apache License 2.0.
+     See https://github.com/home-assistant/core for details.
+
+   This License applies only to the original portions of the Software
+   authored by Flux Open Home. All third-party components remain subject to
+   their respective licenses.
+
+7. DISCLAIMER OF WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES,
+   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+8. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+   DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+   OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+   HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+   STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+   ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+   POSSIBILITY OF SUCH DAMAGE.
+
+9. DISCLAIMER OF LIABILITY FOR PROPERTY DAMAGE AND PERSONAL INJURY
+
+   THE SOFTWARE AND ASSOCIATED HARDWARE DESIGNS ARE PROVIDED FOR
+   INFORMATIONAL AND PERSONAL USE PURPOSES ONLY. FLUX OPEN HOME, ITS
+   OWNERS, CONTRIBUTORS, AND AFFILIATES SHALL NOT BE HELD LIABLE FOR ANY
+   DAMAGE TO LAWNS, LANDSCAPING, GARDENS, OR OTHER VEGETATION; DAMAGE TO
+   HOMES, BUILDINGS, VEHICLES, OR ANY OTHER REAL OR PERSONAL PROPERTY;
+   PERSONAL INJURY OR DEATH; WATER DAMAGE, FLOODING, OR RELATED
+   CONSEQUENCES; DAMAGE RESULTING FROM ELECTRICAL FAULTS, SHORT CIRCUITS,
+   OR IMPROPER WIRING; OR ANY OTHER LOSS OR DAMAGE OF ANY KIND ARISING
+   FROM THE USE, MISUSE, OR INABILITY TO USE THE SOFTWARE OR ASSOCIATED
+   HARDWARE.
+
+   THIS PROJECT IS OPEN SOURCE. THE COPYRIGHT HOLDER HAS NO CONTROL OVER
+   HOW THE SOFTWARE OR HARDWARE IS BUILT, ASSEMBLED, INSTALLED, MODIFIED,
+   OR OPERATED BY END USERS OR THIRD PARTIES. USERS ASSUME ALL RISK AND
+   RESPONSIBILITY FOR THE ASSEMBLY, INSTALLATION, CONFIGURATION, AND
+   OPERATION OF ANY HARDWARE OR SOFTWARE BASED ON THIS PROJECT.
+
+   USERS ARE SOLELY RESPONSIBLE FOR ENSURING THAT THEIR INSTALLATION
+   COMPLIES WITH ALL APPLICABLE LOCAL, STATE, AND NATIONAL LAWS,
+   REGULATIONS, BUILDING CODES, AND ELECTRICAL CODES. THIS INCLUDES, BUT
+   IS NOT LIMITED TO, RAIN SENSOR REQUIREMENTS, WATER CONSERVATION
+   REGULATIONS, AND IRRIGATION SYSTEM STANDARDS.
+
+   BY USING THIS SOFTWARE, YOU ACKNOWLEDGE THAT YOU HAVE READ AND
+   UNDERSTOOD THIS DISCLAIMER AND AGREE TO ASSUME ALL RISKS ASSOCIATED
+   WITH THE USE OF THIS SOFTWARE AND ANY ASSOCIATED HARDWARE.
+
+10. TERMINATION
+
+   This License and the rights granted hereunder will terminate automatically
+   if you fail to comply with any of its terms. Upon termination, you must
+   cease all use and distribution of the Software and destroy all copies in
+   your possession.
+
+11. GOVERNING LAW
+
+    This License shall be governed by and construed in accordance with the
+    laws of the United States of America, without regard to its conflict of
+    law provisions.
