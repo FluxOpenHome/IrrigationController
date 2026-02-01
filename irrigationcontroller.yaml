@@ -184,6 +184,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: board_mismatch_error
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: user_auto_advance_pref
     type: bool
     restore_value: yes
@@ -300,6 +304,22 @@ select:
               id(irrigation_controller_enable_8).turn_off();
             }
           }
+
+  - platform: template
+    id: expansion_board_count
+    name: "Expansion Boards Installed"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    initial_option: "0"
+    icon: "mdi:expansion-card-variant"
+    options:
+      - "0"
+      - "1"
+      - "2"
+      - "3"
+    on_value:
+      - script.execute: detect_expansion_boards
 
 text_sensor:
   - platform: version
@@ -835,6 +855,15 @@ script:
           ESP_LOGI("i2c_detect", "Scanning for expansion boards...");
           id(i2c_bus_error) = false;
           id(unknown_i2c_device) = false;
+          id(board_mismatch_error) = false;
+
+          // Get user-configured expected board count
+          int expected_boards = 0;
+          auto val = id(expansion_board_count).state;
+          if (val == "1") expected_boards = 1;
+          else if (val == "2") expected_boards = 2;
+          else if (val == "3") expected_boards = 3;
+          ESP_LOGI("i2c_detect", "User expects %d expansion board(s)", expected_boards);
 
           uint8_t addr1 = 0x20;
           auto err1 = id(i2c_bus).write(addr1, nullptr, 0);
@@ -861,18 +890,30 @@ script:
             }
           }
 
-          // Check for I2C bus error - if all 3 expected boards fail, bus may be broken
-          if (err1 != esphome::i2c::ERROR_OK && err2 != esphome::i2c::ERROR_OK && err3 != esphome::i2c::ERROR_OK) {
-            // Try a known-good address probe to see if bus itself works
-            // If no devices at all respond in the full scan, flag bus error
+          // Check for I2C bus error - if expected boards > 0 but nothing responds on the bus
+          if (expected_boards > 0 && err1 != esphome::i2c::ERROR_OK && err2 != esphome::i2c::ERROR_OK && err3 != esphome::i2c::ERROR_OK) {
             bool any_device = id(unknown_i2c_device);
             if (!any_device) {
-              // No devices found anywhere on the bus - likely a bus error
-              ESP_LOGW("i2c_detect", "No I2C devices detected on bus - possible bus error");
+              ESP_LOGE("i2c_detect", "No I2C devices detected on bus - possible bus error");
               id(i2c_bus_error) = true;
             }
           }
 
+          // Check for board mismatch - expected board is missing
+          if (expected_boards >= 1 && !id(board1_detected)) {
+            ESP_LOGE("i2c_detect", "MISMATCH: Board 1 expected but not detected!");
+            id(board_mismatch_error) = true;
+          }
+          if (expected_boards >= 2 && !id(board2_detected)) {
+            ESP_LOGE("i2c_detect", "MISMATCH: Board 2 expected but not detected!");
+            id(board_mismatch_error) = true;
+          }
+          if (expected_boards >= 3 && !id(board3_detected)) {
+            ESP_LOGE("i2c_detect", "MISMATCH: Board 3 expected but not detected!");
+            id(board_mismatch_error) = true;
+          }
+
+          // Disable zones for boards that are not detected
           if (!id(board1_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 9-16");
             id(ext_zone_enable_9).turn_off();
@@ -916,18 +957,28 @@ script:
       - lambda: |-
           // LED Status Priority (highest to lowest):
           // 1. I2C bus error - Red pulse
-          // 2. OTA update in progress - Cyan fast pulse (handled by OTA triggers)
-          // 3. Unknown I2C device - White pulse
-          // 4. Zone actively running - Solid green (no pulse)
-          // 5. WiFi disconnected - Blue pulse (handled by wifi on_disconnect)
-          // 6. API/HA not connected - Yellow pulse
-          // 7. Captive portal active - Magenta pulse
-          // 8. Normal (WiFi connected, idle) - Green pulse
+          // 2. Board mismatch (expected but missing) - Orange pulse
+          // 3. OTA update in progress - Cyan fast pulse (handled by OTA triggers)
+          // 4. Unknown I2C device - White pulse
+          // 5. Zone actively running - Solid green (no pulse)
+          // 6. WiFi disconnected - Blue pulse (handled by wifi on_disconnect)
+          // 7. API/HA not connected - Yellow pulse
+          // 8. Captive portal active - Magenta pulse
+          // 9. Normal (WiFi connected, idle) - Green pulse
 
           if (id(i2c_bus_error)) {
             auto call = id(status_led).turn_on();
             call.set_brightness(0.8);
             call.set_rgb(1.0, 0.0, 0.0);
+            call.set_effect("Pulse");
+            call.perform();
+            return;
+          }
+
+          if (id(board_mismatch_error)) {
+            auto call = id(status_led).turn_on();
+            call.set_brightness(0.8);
+            call.set_rgb(1.0, 0.4, 0.0);
             call.set_effect("Pulse");
             call.perform();
             return;

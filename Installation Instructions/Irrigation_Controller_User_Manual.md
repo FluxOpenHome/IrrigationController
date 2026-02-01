@@ -103,15 +103,36 @@ by Home Assistant. Accept the integration to add all entities.
 
 # **3. Status LED Indicators**
 
-The controller has an RGB status LED that indicates the current state:
+The controller has an RGB status LED that indicates the current state.
+The LED uses a priority system, showing only the highest-priority
+condition:
 
   -----------------------------------------------------------------------
-  **LED Color**           **Pattern**             **Meaning**
-  ----------------------- ----------------------- -----------------------
-  Blue                    Pulsing                 Booting / Not connected
-                                                  to Wi-Fi
+  **Priority**  **LED Color**     **Pattern**     **Meaning**
+  ------------- ----------------- --------------- -----------------------
+  1             Red               Pulsing         I2C bus error (no
+                                                  devices responding)
 
-  Green                   Pulsing                 Connected to Wi-Fi
+  2             Orange            Pulsing         Expansion board mismatch
+                                                  (expected board missing)
+
+  3             Cyan              Fast Pulsing    OTA update in progress
+
+  4             White             Pulsing         Unknown I2C device
+                                                  detected
+
+  5             Green             Solid (no       Zone actively running
+                                  pulse)
+
+  6             Blue              Pulsing         Wi-Fi disconnected
+
+  7             Yellow            Pulsing         Home Assistant not
+                                                  connected
+
+  8             Magenta           Pulsing         Captive portal active
+
+  9             Green             Pulsing         Normal operation (idle,
+                                                  all connected)
   -----------------------------------------------------------------------
 
 # **4. Zone Configuration**
@@ -372,7 +393,26 @@ Up to four start times can be configured. Enter times in HH:MM format
 
 # **13. Expansion Boards**
 
-The controller automatically detects expansion boards on startup.
+The controller supports up to three optional MCP23017 expansion boards,
+adding 8 zones each. Expansion boards are sequential — Board 2 requires
+Board 1, and Board 3 requires both Board 1 and Board 2.
+
+## **Configuring Expansion Board Count**
+
+In Home Assistant, find the \"Expansion Boards Installed\" selector under
+the device's configuration entities. Set it to the number of expansion
+boards you have physically installed:
+
+-   **0** - No expansion boards (zones 1-8 only)
+
+-   **1** - One expansion board (zones 1-16)
+
+-   **2** - Two expansion boards (zones 1-24)
+
+-   **3** - Three expansion boards (zones 1-32)
+
+This setting is saved across reboots. Changing it immediately triggers a
+re-scan of the I2C bus.
 
 ## **Viewing Detected Zones**
 
@@ -395,6 +435,22 @@ zones and which expansion boards are connected.
 
 If an expansion board is not detected, zones on that board are
 automatically disabled to prevent errors.
+
+## **Error Detection**
+
+The controller compares the number of boards you configured against what
+is actually detected on the I2C bus:
+
+-   **No error:** If you set \"0\" and no boards are found, this is
+    expected and no error is flagged.
+
+-   **Board mismatch (orange LED):** If you configured a board count but
+    one or more expected boards are not detected, the status LED pulses
+    orange. Check your I2C wiring and board addresses.
+
+-   **I2C bus error (red LED):** If you expect boards but no devices at
+    all respond on the I2C bus, this indicates a possible wiring fault
+    or bus failure.
 
 # **14. Firmware Updates**
 
@@ -470,13 +526,56 @@ This should NOT happen with firmware v1.3.0+. If you experience this:
 
 ### **Expansion board zones not working**
 
+-   Verify the \"Expansion Boards Installed\" selector matches the number
+    of boards you have physically installed
+
 -   Check the \"Detected Zones\" sensor
 
 -   Verify I2C connections to expansion boards
 
 -   Ensure correct I2C addresses (0x20, 0x21, 0x22)
 
+### **Orange pulsing LED (board mismatch)**
+
+-   One or more expected expansion boards were not detected
+
+-   Check that the \"Expansion Boards Installed\" setting matches your
+    physical hardware
+
+-   Verify I2C wiring (SDA/SCL connections) to the missing board(s)
+
+-   Ensure expansion board address jumpers are set correctly
+
+-   If you removed an expansion board, update the selector to reflect
+    the new count
+
+### **Red pulsing LED (I2C bus error)**
+
+-   No I2C devices are responding on the bus at all
+
+-   Check SDA (GPIO8) and SCL (GPIO9) wiring
+
+-   Verify power supply to expansion boards
+
+-   Check for short circuits on the I2C bus
+
 # **16. Version History**
+
+### **v1.3.1**
+
+-   NEW: \"Expansion Boards Installed\" selector to configure expected
+    board count (0, 1, 2, or 3)
+
+-   NEW: Board mismatch error detection — orange LED when expected
+    boards are missing
+
+-   IMPROVED: Full status LED priority table with 9 distinct states
+
+-   IMPROVED: I2C bus error only flagged when expansion boards are
+    expected but nothing responds
+
+-   IMPROVED: Detection script re-runs automatically when board count
+    setting is changed
 
 ### **v1.3.0**
 
