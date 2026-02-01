@@ -69,6 +69,18 @@ An ESP32-S3 based smart irrigation controller with up to 32 zones, designed for 
 ### Option 3: Web Installer
 Visit the project's web installer page to flash directly from your browser (Chrome/Edge).
 
+### Device Provisioning (Wi-Fi Setup)
+
+After flashing, the controller needs to be connected to your Wi-Fi network. Three methods are available:
+
+1. **Bluetooth (Recommended)**: The controller advertises via Bluetooth on first boot. Open the Home Assistant Companion app, go to Settings → Devices & Services, and the device will appear under "Discovered." Tap to configure and enter your Wi-Fi credentials.
+
+2. **Captive Portal (Fallback)**: If Bluetooth is unavailable, the controller creates a Wi-Fi access point named `irrigation-controller-XXXXXX`. Where 'XXXXXX' is the specific MAC address for your device. Connect to it (no password required), and a portal page will open where you can enter your Wi-Fi credentials. If the portal does not open automatically, navigate to `http://192.168.4.1` in the browser on the device connected to the Wi-Fi access point.
+
+3. **USB Serial**: Connect via USB and use the ESPHome Dashboard or CLI to enter Wi-Fi credentials over the Improv Serial protocol.
+
+Once connected to Wi-Fi, Home Assistant will automatically discover the device. Accept the integration to add all entities.
+
 ---
 
 ## Configuration
@@ -254,8 +266,8 @@ This safety timing is handled automatically when operating via Home Assistant.
 
 ### Device not connecting to Wi-Fi
 - Ensure 2.4GHz network (5GHz not supported)
-- Try captive portal: connect to "irrigation-controller-XXXXXX" AP
-- Default AP password: 12345678
+- Try captive portal: connect to the "irrigation-controller-XXXXXX" AP (no password required), then navigate to `http://192.168.4.1` if the portal does not open automatically
+- Verify Wi-Fi credentials are correct
 
 ### Pump not starting
 - Verify Zone 8 Mode is set to "Pump Start Relay"

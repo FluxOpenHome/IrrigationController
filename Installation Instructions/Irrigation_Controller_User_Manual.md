@@ -67,41 +67,99 @@ valve management.
 ## **Wi-Fi Provisioning**
 
 The controller supports multiple methods to connect to your Wi-Fi
-network:
+network. On first boot (or if Wi-Fi credentials are lost), the
+controller will automatically enter provisioning mode so you can
+configure your network settings.
 
 ### **Bluetooth Provisioning (Recommended)**
 
--   Open the Home Assistant app on your phone or computer
+This is the simplest method and works directly from the Home Assistant
+mobile app:
 
--   Go to Settings → Devices & Services
+1.  Power on the controller — it will begin advertising via Bluetooth
+    automatically
 
--   The device should appear as a discovered device
+2.  Open the Home Assistant Companion app on your phone
 
--   Follow the prompts to enter your Wi-Fi credentials
+3.  Go to **Settings → Devices & Services**
 
-### **Captive Portal**
+4.  The controller should appear under "Discovered" as a new ESPHome
+    device
 
--   If Bluetooth provisioning is unavailable, the controller creates its
-    > own Wi-Fi access point
+5.  Tap to configure and enter your Wi-Fi network name (SSID) and
+    password when prompted
 
--   Connect to the network named irrigation-controller-XXXXXX (where
-    > XXXXXX is part of the MAC address)
+6.  The controller will connect to your Wi-Fi network and stop
+    Bluetooth advertising
 
--   Default password: 12345678
+If the controller does not appear in discovered devices, ensure
+Bluetooth is enabled on your phone and that you are within range
+(approximately 10 meters / 30 feet).
 
--   A captive portal will open where you can enter your Wi-Fi
-    > credentials
+### **Captive Portal (Fallback)**
+
+If Bluetooth provisioning is not available (e.g., using a desktop
+computer without Bluetooth), the controller automatically creates its
+own Wi-Fi access point as a fallback:
+
+1.  On your phone, tablet, or computer, open your Wi-Fi settings
+
+2.  Look for a network named **irrigation-controller-XXXXXX** (where
+    XXXXXX is a unique identifier derived from the device's MAC address)
+
+3.  Connect to this network — no password is required
+
+4.  A captive portal page should open automatically in your browser. If
+    it does not, navigate to **http://192.168.4.1** in your browser
+
+5.  Select your home Wi-Fi network from the list and enter your Wi-Fi
+    password
+
+6.  The controller will save the credentials, disconnect the access
+    point, and connect to your home network
+
+**Note:** The captive portal access point is only active when the
+controller cannot connect to a previously configured Wi-Fi network.
+During normal operation, the access point is not broadcast.
 
 ### **USB Serial Provisioning**
 
--   Connect the controller to your computer via USB
+For advanced users or initial flashing, you can configure Wi-Fi over a
+USB serial connection:
 
--   Use ESPHome or a serial terminal to configure Wi-Fi
+1.  Connect the controller to your computer using a USB-C cable
+
+2.  Open the ESPHome Dashboard or use the ESPHome command-line tool
+
+3.  The device will advertise itself via Improv Serial, allowing you to
+    enter Wi-Fi credentials through the ESPHome interface
+
+4.  Alternatively, you can use any serial terminal at 115200 baud to
+    interact with the Improv Serial protocol
+
+This method is particularly useful when first flashing the firmware onto
+a brand-new ESP32-S3 board.
 
 ## **Adding to Home Assistant**
 
-Once connected to Wi-Fi, the controller will automatically be discovered
-by Home Assistant. Accept the integration to add all entities.
+Once the controller is connected to your Wi-Fi network:
+
+1.  Home Assistant will automatically discover the device within a few
+    minutes
+
+2.  A notification will appear, or you can find it under **Settings →
+    Devices & Services → Discovered**
+
+3.  Click **Configure** to add the device
+
+4.  All entities (zones, sensors, controls) will be created
+    automatically
+
+5.  The device is now ready to use — no additional configuration is
+    required in Home Assistant
+
+If the device is not discovered automatically, verify that both Home
+Assistant and the controller are on the same network and subnet.
 
 # **3. Status LED Indicators**
 
@@ -581,7 +639,10 @@ an update is available.
 
 -   Check that the LED is pulsing blue (looking for connection)
 
--   Try the captive portal method - connect to the device\'s AP
+-   Try the captive portal method — look for the
+    "irrigation-controller-XXXXXX" network in your Wi-Fi settings and
+    connect to it (no password required), then navigate to
+    http://192.168.4.1 if the portal does not open automatically
 
 -   Verify your Wi-Fi credentials are correct
 
