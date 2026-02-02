@@ -14,7 +14,7 @@ substitutions:
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
   rain_sensor_pin: "GPIO4"
-  software_version: "1.2.6"
+  software_version: "1.2.7"
   sensor_update_frequency: "10s"
   log_level: "INFO"
   devicename: irrigation_controller
