@@ -387,6 +387,19 @@ moves to the next enabled zone after each zone completes.
 
 -   You must manually start each zone
 
+### **Important: Auto Advance Resets After Each Cycle**
+
+The Auto Advance switch automatically turns OFF after a cycle
+completes. This is by design — the ESPHome sprinkler component resets
+Auto Advance at the end of every cycle. If you want to run multiple
+zones again, you will need to turn Auto Advance back on before
+starting the next cycle.
+
+**Exception — Scheduled Runs:** When irrigation runs from a schedule,
+the controller automatically enables Auto Advance for the duration of
+the scheduled run and restores your previous Auto Advance setting when
+the schedule completes.
+
 # **11. Repeat Cycles**
 
 The \"Repeat\" number entity controls how many complete cycles run

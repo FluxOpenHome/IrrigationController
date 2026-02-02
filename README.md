@@ -13,7 +13,7 @@ An ESP32-S3 based smart irrigation controller with up to 32 zones, designed for 
 - **Intelligent Pump/Master Valve Control**: Automatic 2-second startup delay, stays on throughout cycle
 - **Flexible Zone 8 Configuration**: Use as normal zone, master valve, or pump start relay
 - **Built-in Scheduling**: 4 programmable start times, 7-day scheduling
-- **Auto Advance**: Automatically cycles through enabled zones
+- **Auto Advance**: Automatically cycles through enabled zones (resets after each cycle; scheduled runs handle this automatically)
 - **Repeat Cycles**: Run multiple passes through all zones
 - **Wi-Fi Provisioning**: Bluetooth, captive portal, or serial configuration
 - **OTA Firmware Updates**: Update directly from Home Assistant
@@ -252,7 +252,7 @@ This safety timing is handled automatically when operating via Home Assistant.
 
 ### v1.2.5
 - OTA updates via GitHub Releases
-- Auto-advance preference memory
+- Auto Advance resets after each cycle completes; scheduled runs enable it automatically and restore your preference afterward
 - Zone 8 mode enforcement
 - Timer icons for duration entities
 
