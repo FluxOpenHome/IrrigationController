@@ -163,37 +163,25 @@ Assistant and the controller are on the same network and subnet.
 
 # **3. Status LED Indicators**
 
-The controller has an RGB status LED that indicates the current state.
-The LED uses a priority system, showing only the highest-priority
-condition:
+The controller has an RGB status LED (WS2812 on GPIO42) that indicates
+the current system state:
 
   -----------------------------------------------------------------------
-  **Priority**  **LED Color**     **Pattern**     **Meaning**
-  ------------- ----------------- --------------- -----------------------
-  1             Red               Pulsing         I2C bus error (no
-                                                  devices responding)
+  **LED Color**           **Pattern**       **Meaning**
+  ----------------------- ----------------- -----------------------------
+  Green                   Pulsing           Wi-Fi connected, no rain
 
-  2             Orange            Pulsing         Expansion board mismatch
-                                                  (expected board missing)
+  Green ↔ Yellow          Alternating       Wi-Fi connected, rain
+                                            detected
 
-  3             Cyan              Fast Pulsing    OTA update in progress
+  Blue                    Pulsing           Wi-Fi disconnected, no rain
 
-  4             White             Pulsing         Unknown I2C device
-                                                  detected
-
-  5             Green             Solid (no       Zone actively running
-                                  pulse)
-
-  6             Blue              Pulsing         Wi-Fi disconnected
-
-  7             Yellow            Pulsing         Home Assistant not
-                                                  connected
-
-  8             Magenta           Pulsing         Captive portal active
-
-  9             Green             Pulsing         Normal operation (idle,
-                                                  all connected)
+  Green ↔ Blue            Alternating       Wi-Fi disconnected, rain
+                                            detected
   -----------------------------------------------------------------------
+
+The LED alternates between colors every 1 second when rain is detected,
+allowing you to see both the Wi-Fi status and rain status at a glance.
 
 # **4. Zone Configuration**
 
@@ -454,102 +442,169 @@ Up to four start times can be configured. Enter times in HH:MM format
 # **13. Rain Sensor**
 
 The controller supports an optional wired rain sensor to automatically
-suspend irrigation when rain is detected.
+suspend irrigation when rain is detected. The rain sensor connects to
+GPIO4 by default and works with both Normally Open (NO) and Normally
+Closed (NC) sensor types.
 
 ## **Wiring**
 
-Most wired rain sensors are passive devices with two wires. Connect one
-wire to the configured GPIO pin (default: GPIO4) and the other wire to
-GND on the controller. The controller uses an internal pull-up resistor,
-so no external resistor is needed.
+Most wired rain sensors are passive two-wire devices. Connect one wire
+to the rain sensor GPIO pin (default: GPIO4) and the other wire to GND
+on the controller. The controller uses an internal pull-up resistor, so
+no external resistor is needed.
 
 To change the GPIO pin, modify the `rain_sensor_pin` substitution in
 your ESPHome configuration.
 
 ## **Enabling the Rain Sensor**
 
-In Home Assistant, turn on the "Rain Sensor Enabled" switch. When
-disabled, the rain sensor hardware is still monitored but will not
-affect irrigation operation.
+In Home Assistant, turn on the **"Rain Sensor Enabled"** switch. This
+is the master toggle for rain sensor functionality. When disabled, the
+rain sensor hardware is still monitored (you can still see its state in
+Home Assistant) but it will have no effect on irrigation operation — no
+automatic shutoff, no rain delay, and no schedule skipping.
 
 ## **Sensor Type (NO/NC)**
 
-Rain sensors come in two wiring configurations:
-
--   **Normally Closed (NC)**: The circuit is closed when dry and opens
-    when wet. This is the most common type.
+Rain sensors come in two wiring configurations. Use the **"Rain Sensor
+Type"** selector in Home Assistant to match your sensor hardware. The
+default is **Normally Open (NO)**.
 
 -   **Normally Open (NO)**: The circuit is open when dry and closes
-    when wet.
+    when wet. Rain is detected when the sensor grounds the pin (pulls
+    it LOW).
 
-Use the "Rain Sensor Type" selector in Home Assistant to match your
-sensor. The default is Normally Closed (NC).
+-   **Normally Closed (NC)**: The circuit is closed when dry and opens
+    when wet. Rain is detected when the circuit opens and the internal
+    pull-up pulls the pin HIGH.
+
+**Important:** The **"Rain Sensor"** binary sensor entity in Home
+Assistant shows the raw physical state of the GPIO pin. It does **not**
+account for the NO/NC setting. This means:
+
+-   With a NO sensor: the Rain Sensor entity may show "Wet" when the
+    pin is grounded, even though the controller correctly interprets
+    this as rain detected.
+
+-   The actual rain detection logic, irrigation shutoff, rain delay,
+    schedule skipping, and LED status all correctly interpret the pin
+    state based on your NO/NC selection.
+
+-   To confirm rain is being detected correctly, check the **Status**
+    text sensor (should show "Rain Detected - Stopped") and the
+    **status LED** (should alternate green/yellow or green/blue).
 
 ## **Rain Detection Behavior**
 
-When rain is detected and the rain sensor is enabled:
+When rain is detected and the rain sensor is enabled, the following
+happens automatically:
 
--   Any actively running irrigation is **immediately stopped**
+1.  Any actively running irrigation is **immediately stopped** — the
+    main switch is turned off. This applies to **all** running
+    irrigation, including manually started runs.
 
--   The status displays "Rain Detected - Stopped"
+2.  The Status text sensor displays **"Rain Detected - Stopped"**.
 
--   Scheduled irrigation will not start while rain is actively detected
+3.  The status LED changes to indicate rain:
+    -   **Green ↔ Yellow alternating** (1 second each) if Wi-Fi is
+        connected
+    -   **Green ↔ Blue alternating** (1 second each) if Wi-Fi is
+        disconnected
 
-When the sensor clears (dries out), the status updates to "Rain
-Cleared" and normal operation resumes (subject to rain delay, if
-enabled).
+4.  If Rain Delay is enabled, the delay timer starts counting from
+    this moment.
+
+5.  **Scheduled** irrigation will not start while rain is actively
+    detected — the schedule is skipped with status "Schedule Skipped -
+    Rain".
+
+6.  **After the initial shutoff, manual override is possible.** Once
+    the rain sensor has triggered and stopped irrigation, you can
+    manually turn on zones, use auto-advance, or start irrigation from
+    Home Assistant. The rain sensor will not prevent this manual
+    override. However, if the sensor transitions from dry to wet
+    again (a new rain event), it will immediately stop irrigation
+    again. Only automated scheduled runs are blocked entirely during
+    active rain and rain delay periods.
+
+## **Rain Cleared**
+
+When the rain sensor dries out and clears:
+
+1.  The Status text sensor updates to **"Rain Cleared"**.
+
+2.  The status LED returns to normal:
+    -   **Green pulsing** if Wi-Fi is connected
+    -   **Blue pulsing** if Wi-Fi is disconnected
+
+3.  Irrigation can resume, **unless** a rain delay is still active.
 
 ## **Rain Delay**
 
-The rain delay feature prevents irrigation from resuming too soon after
-rain has stopped. This helps comply with local water conservation
-regulations — for example, some jurisdictions require a 48-hour delay
-after rainfall before automatic irrigation can resume.
+The rain delay feature prevents scheduled irrigation from resuming too
+soon after rain has stopped. This helps comply with local water
+conservation regulations.
 
-### **Configuring Rain Delay:**
+### **How Rain Delay Works:**
 
-1.  Turn on the "Rain Delay Enabled" switch in Home Assistant
+1.  Turn on the **"Rain Delay Enabled"** switch in Home Assistant.
 
-2.  Set the "Rain Delay Hours" value (default: 48 hours, range: 1-72
-    hours)
+2.  Set the **"Rain Delay Hours"** value (default: 48 hours, range:
+    1-72 hours).
 
-When rain is detected, a delay timer is set for the configured number
-of hours from the time of detection. During the delay period:
+3.  When rain is **first detected**, the controller sets a delay timer
+    for the configured number of hours from that moment.
 
--   Scheduled irrigation is skipped with status "Schedule Skipped -
-    Rain Delay"
+4.  During the delay period:
+    -   **Scheduled** irrigation is skipped with status **"Schedule
+        Skipped - Rain Delay"**
+    -   Manual zone operation and auto-advance remain fully available
+    -   The **"Rain Delay Active"** sensor shows ON in Home Assistant
+    -   The delay timer **persists across reboots** — restarting the
+        controller does not reset the timer
 
--   The "Rain Delay Active" sensor shows ON in Home Assistant
+5.  After the delay period expires, scheduled irrigation resumes
+    normally.
 
--   The delay timer persists across reboots
+### **Canceling Rain Delay:**
+
+To cancel an active rain delay before it expires, turn off the **"Rain
+Delay Enabled"** switch. The "Rain Delay Active" sensor will
+immediately show OFF and scheduled irrigation can resume.
 
 ### **Regulatory Compliance Note:**
 
 Rain sensor and rain delay requirements vary by jurisdiction. Some US
 states (including Florida, California, New Jersey, and Georgia, among
 others) require rain sensors on automatic irrigation systems. California
-specifically requires a 48-hour delay, which is the default setting.
-Users are responsible for verifying and complying with their local
-regulations. Adjust the rain delay hours as needed for your area.
+specifically requires a 48-hour delay after rainfall, which is the
+default setting. Users are responsible for verifying and complying with
+their local regulations. Adjust the rain delay hours as needed for your
+area.
 
 ## **Home Assistant Entities**
 
   -----------------------------------------------------------------------
-  **Entity**                          **Type**
+  **Entity**                          **Type / Description**
   ----------------------------------- -----------------------------------
-  Rain Sensor Enabled                 Switch (toggle)
+  Rain Sensor Enabled                 Switch — master toggle for rain
+                                      sensor functionality
 
-  Rain Delay Enabled                  Switch (toggle)
+  Rain Delay Enabled                  Switch — enables the post-rain
+                                      delay timer
 
-  Rain Sensor Type                    Select (NC / NO)
+  Rain Sensor Type                    Select — Normally Open (NO) or
+                                      Normally Closed (NC)
 
-  Rain Delay Hours                    Number (1-72, default 48)
+  Rain Delay Hours                    Number — delay period in hours
+                                      (1-72, default 48)
 
-  Rain Sensor                         Binary Sensor (raw GPIO state)
+  Rain Sensor                         Binary Sensor — raw GPIO pin
+                                      state (does not reflect NO/NC
+                                      logic)
 
-  Rain Detected                       Binary Sensor (effective state)
-
-  Rain Delay Active                   Binary Sensor
+  Rain Delay Active                   Binary Sensor — ON when the delay
+                                      timer is counting down
   -----------------------------------------------------------------------
 
 # **14. Expansion Boards**
@@ -558,22 +613,11 @@ The controller supports up to three optional MCP23017 expansion boards,
 adding 8 zones each. Expansion boards are sequential — Board 2 requires
 Board 1, and Board 3 requires both Board 1 and Board 2.
 
-## **Configuring Expansion Board Count**
+## **Auto-Detection**
 
-In Home Assistant, find the \"Expansion Boards Installed\" selector under
-the device's configuration entities. Set it to the number of expansion
-boards you have physically installed:
-
--   **0** - No expansion boards (zones 1-8 only)
-
--   **1** - One expansion board (zones 1-16)
-
--   **2** - Two expansion boards (zones 1-24)
-
--   **3** - Three expansion boards (zones 1-32)
-
-This setting is saved across reboots. Changing it immediately triggers a
-re-scan of the I2C bus.
+The controller automatically scans the I2C bus on boot and detects which
+expansion boards are connected. Zones on undetected boards are
+automatically disabled.
 
 ## **Viewing Detected Zones**
 
@@ -597,21 +641,6 @@ zones and which expansion boards are connected.
 If an expansion board is not detected, zones on that board are
 automatically disabled to prevent errors.
 
-## **Error Detection**
-
-The controller compares the number of boards you configured against what
-is actually detected on the I2C bus:
-
--   **No error:** If you set \"0\" and no boards are found, this is
-    expected and no error is flagged.
-
--   **Board mismatch (orange LED):** If you configured a board count but
-    one or more expected boards are not detected, the status LED pulses
-    orange. Check your I2C wiring and board addresses.
-
--   **I2C bus error (red LED):** If you expect boards but no devices at
-    all respond on the I2C bus, this indicates a possible wiring fault
-    or bus failure.
 
 # **15. Firmware Updates**
 
@@ -690,59 +719,51 @@ This should NOT happen with firmware v1.3.0+. If you experience this:
 
 ### **Expansion board zones not working**
 
--   Verify the \"Expansion Boards Installed\" selector matches the number
-    of boards you have physically installed
-
 -   Check the \"Detected Zones\" sensor
 
--   Verify I2C connections to expansion boards
+-   Verify I2C connections to expansion boards (SDA on GPIO8, SCL on GPIO9)
 
 -   Ensure correct I2C addresses (0x20, 0x21, 0x22)
 
-### **Orange pulsing LED (board mismatch)**
-
--   One or more expected expansion boards were not detected
-
--   Check that the \"Expansion Boards Installed\" setting matches your
-    physical hardware
-
--   Verify I2C wiring (SDA/SCL connections) to the missing board(s)
-
--   Ensure expansion board address jumpers are set correctly
-
--   If you removed an expansion board, update the selector to reflect
-    the new count
-
-### **Red pulsing LED (I2C bus error)**
-
--   No I2C devices are responding on the bus at all
-
--   Check SDA (GPIO8) and SCL (GPIO9) wiring
-
--   Verify power supply to expansion boards
-
--   Check for short circuits on the I2C bus
-
 ### **Rain sensor not detecting rain**
 
--   Verify "Rain Sensor Enabled" is ON
+-   Verify **"Rain Sensor Enabled"** is ON
 
--   Check the "Rain Sensor Type" setting matches your sensor (NC vs NO)
+-   Check the **"Rain Sensor Type"** setting matches your sensor
+    hardware (NC vs NO)
 
--   Verify wiring: one wire to the configured GPIO pin, other wire to GND
+-   Verify wiring: one wire to the rain sensor GPIO pin (default
+    GPIO4), other wire to GND
 
--   Check the "Rain Sensor" binary sensor in Home Assistant to see the
-    raw hardware state
+-   Check the **Status** text sensor — it should show "Rain Detected -
+    Stopped" when rain is active
+
+-   Check the **status LED** — it should alternate green/yellow (Wi-Fi
+    connected) or green/blue (Wi-Fi disconnected) when rain is detected
+
+-   **Note:** The "Rain Sensor" binary sensor shows the raw GPIO pin
+    state and does **not** reflect the NO/NC logic. It may appear
+    inverted from what you expect — this is normal. The controller's
+    internal rain detection correctly interprets the pin state based on
+    your NO/NC configuration.
 
 ### **Irrigation not resuming after rain**
 
--   Check if "Rain Delay Active" is still ON — the delay period may not
-    have elapsed yet
+-   Check if **"Rain Delay Active"** is still ON — the delay timer may
+    not have elapsed yet
 
--   Verify "Rain Delay Hours" is set to an appropriate value
+-   Verify **"Rain Delay Hours"** is set to an appropriate value
 
--   If you want irrigation to resume immediately after rain clears,
-    turn off "Rain Delay Enabled"
+-   The rain delay timer starts when rain is first detected and
+    **persists across reboots** — restarting the controller will not
+    reset it
+
+-   To cancel an active rain delay immediately, turn off **"Rain Delay
+    Enabled"**
+
+-   If you do not want any delay after rain clears, keep "Rain Delay
+    Enabled" OFF — irrigation will resume as soon as the sensor dries
+    out
 
 # **17. Version History**
 
@@ -759,24 +780,9 @@ This should NOT happen with firmware v1.3.0+. If you experience this:
 
 -   NEW: Scheduled runs skipped during active rain or rain delay
 
--   NEW: Rain Detected and Rain Delay Active binary sensors for
-    Home Assistant
+-   NEW: Rain Delay Active binary sensor for Home Assistant
 
-### **v1.3.1**
-
--   NEW: \"Expansion Boards Installed\" selector to configure expected
-    board count (0, 1, 2, or 3)
-
--   NEW: Board mismatch error detection — orange LED when expected
-    boards are missing
-
--   IMPROVED: Full status LED priority table with 9 distinct states
-
--   IMPROVED: I2C bus error only flagged when expansion boards are
-    expected but nothing responds
-
--   IMPROVED: Detection script re-runs automatically when board count
-    setting is changed
+-   NEW: Status LED reflects rain state (green/yellow alternating when Wi-Fi connected, green/blue alternating when Wi-Fi disconnected)
 
 ### **v1.3.0**
 

@@ -13,6 +13,7 @@ substitutions:
   zone_6_name: "Zone 6"
   zone_7_name: "Zone 7"
   zone_8_name: "Zone 8"
+  rain_sensor_pin: "GPIO4"
   software_version: "1.2.6"
   sensor_update_frequency: "10s"
   log_level: "INFO"
@@ -44,7 +45,6 @@ esphome:
           effect: "Pulse"
       - delay: 2s
       - script.execute: detect_expansion_boards
-      - script.execute: update_status_led
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -64,56 +64,12 @@ logger:
 
 api:
   id: api_server
-  on_client_connected:
-    - script.execute: update_status_led
-  on_client_disconnected:
-    - script.execute: update_status_led
 
 ota:
   - id: ota_component
     platform: esphome
-    on_begin:
-      - light.turn_on:
-          id: status_led
-          brightness: 80%
-          red: 0%
-          green: 100%
-          blue: 100%
-          effect: "Fast Pulse"
-    on_end:
-      - script.execute: update_status_led
-    on_error:
-      - light.turn_on:
-          id: status_led
-          brightness: 80%
-          red: 100%
-          green: 0%
-          blue: 0%
-          effect: "Fast Pulse"
-      - delay: 5s
-      - script.execute: update_status_led
   - id: ota_http_request
     platform: http_request
-    on_begin:
-      - light.turn_on:
-          id: status_led
-          brightness: 80%
-          red: 0%
-          green: 100%
-          blue: 100%
-          effect: "Fast Pulse"
-    on_end:
-      - script.execute: update_status_led
-    on_error:
-      - light.turn_on:
-          id: status_led
-          brightness: 80%
-          red: 100%
-          green: 0%
-          blue: 0%
-          effect: "Fast Pulse"
-      - delay: 5s
-      - script.execute: update_status_led
 
 # HTTP request component for firmware updates
 http_request:
@@ -139,10 +95,41 @@ wifi:
   id: wifi_component
   ap:
     ssid: "${name}"
+    password: "12345678"
   on_connect:
-    - script.execute: update_status_led
+    - if:
+        condition:
+          lambda: 'return id(rain_sensor_active);'
+        then:
+          - light.turn_on:
+              id: status_led
+              brightness: 80%
+              effect: "Rain WiFi Connected"
+        else:
+          - light.turn_on:
+              id: status_led
+              brightness: 80%
+              red: 0%
+              green: 100%
+              blue: 0%
+              effect: "Pulse"
   on_disconnect:
-    - script.execute: update_status_led
+    - if:
+        condition:
+          lambda: 'return id(rain_sensor_active);'
+        then:
+          - light.turn_on:
+              id: status_led
+              brightness: 80%
+              effect: "Rain WiFi Disconnected"
+        else:
+          - light.turn_on:
+              id: status_led
+              brightness: 80%
+              red: 0%
+              green: 0%
+              blue: 100%
+              effect: "Pulse"
 
 captive_portal:
   id: captive_portal_component
@@ -176,18 +163,6 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
-  - id: unknown_i2c_device
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-  - id: i2c_bus_error
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-  - id: board_mismatch_error
-    type: bool
-    restore_value: no
-    initial_value: 'false'
   - id: user_auto_advance_pref
     type: bool
     restore_value: yes
@@ -196,6 +171,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: rain_sensor_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: rain_delay_until
+    type: uint32_t
+    restore_value: yes
+    initial_value: '0'
 
 i2c:
   id: i2c_bus
@@ -224,10 +207,30 @@ light:
           name: "Pulse"
           transition_length: 1s
           update_interval: 1s
-      - pulse:
-          name: "Fast Pulse"
-          transition_length: 0.5s
-          update_interval: 0.5s
+      - addressable_lambda:
+          name: "Rain WiFi Connected"
+          update_interval: 1s
+          lambda: |-
+            // Alternate green and yellow every 1 second
+            static bool toggle = false;
+            if (toggle) {
+              it[0] = Color(0, 255, 0);   // Green
+            } else {
+              it[0] = Color(255, 255, 0);  // Yellow
+            }
+            toggle = !toggle;
+      - addressable_lambda:
+          name: "Rain WiFi Disconnected"
+          update_interval: 1s
+          lambda: |-
+            // Alternate green and blue every 1 second
+            static bool toggle = false;
+            if (toggle) {
+              it[0] = Color(0, 255, 0);   // Green
+            } else {
+              it[0] = Color(0, 0, 255);   // Blue
+            }
+            toggle = !toggle;
 
 text:
   - platform: template
@@ -306,26 +309,22 @@ select:
           }
 
   - platform: template
-    id: expansion_board_count
-    name: "Expansion Boards Installed"
+    id: rain_sensor_type
+    name: "Rain Sensor Type"
     optimistic: true
     restore_value: true
     entity_category: config
-    initial_option: "0"
-    icon: "mdi:expansion-card-variant"
+    initial_option: "Normally Open (NO)"
+    icon: "mdi:water-alert"
     options:
-      - "0"
-      - "1"
-      - "2"
-      - "3"
-    on_value:
-      - script.execute: detect_expansion_boards
+      - "Normally Closed (NC)"
+      - "Normally Open (NO)"
 
 text_sensor:
   - platform: version
     id: esphome_version
     name: "ESPHome Version"
-    
+
   - platform: wifi_info
     ip_address:
       id: wifi_ip_address
@@ -333,7 +332,7 @@ text_sensor:
     ssid:
       id: wifi_ssid
       name: "Connected SSID"
-    
+
   - platform: template
     id: time_remaining
     name: "Time Remaining"
@@ -376,7 +375,7 @@ text_sensor:
       if (id(board1_detected)) zones += 8;
       if (id(board2_detected)) zones += 8;
       if (id(board3_detected)) zones += 8;
-      
+
       std::string result = std::to_string(zones) + " zones (";
       if (!id(board1_detected) && !id(board2_detected) && !id(board3_detected)) {
         result += "no expansion boards";
@@ -399,6 +398,29 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
 
+binary_sensor:
+  - platform: gpio
+    id: rain_sensor_raw
+    name: "Rain Sensor"
+    pin:
+      number: ${rain_sensor_pin}
+      mode:
+        input: true
+        pullup: true
+    device_class: moisture
+    filters:
+      - delayed_on: 500ms
+      - delayed_off: 500ms
+
+  - platform: template
+    id: rain_delay_active_sensor
+    name: "Rain Delay Active"
+    icon: "mdi:timer-sand"
+    lambda: |-
+      if (!id(rain_delay_enabled).state) return false;
+      if (!id(homeassistant_time).now().is_valid()) return false;
+      return id(homeassistant_time).now().timestamp < id(rain_delay_until);
+
 # Only non-zone numbers here
 number:
   - platform: template
@@ -415,6 +437,20 @@ number:
           id: ${devicename}
           repeat: !lambda 'return x;'
 
+  - platform: template
+    id: rain_delay_hours
+    name: "Rain Delay Hours"
+    min_value: 1
+    max_value: 72
+    step: 1
+    mode: box
+    icon: "mdi:clock-alert-outline"
+    optimistic: true
+    restore_value: true
+    initial_value: 48
+    unit_of_measurement: "h"
+    entity_category: config
+
 # Sprinkler controller with all 32 zones
 # Duration entities are created inline with proper naming
 sprinkler:
@@ -422,12 +458,9 @@ sprinkler:
     main_switch:
       name: "Start/Stop/Resume"
       id: main_switch
-      on_turn_on:
-        - script.execute: update_status_led
       on_turn_off:
         - script.execute: handle_cycle_complete
-        - script.execute: update_status_led
-    auto_advance_switch: 
+    auto_advance_switch:
       name: "Auto Advance"
       id: auto_advance_switch
       on_turn_on:
@@ -441,7 +474,7 @@ sprinkler:
     valves:
       # Main board zones 1-8
       - valve_switch: ${zone_1_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_1_name}"
           id: irrigation_controller_enable_1
         run_duration_number:
@@ -452,7 +485,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_1
       - valve_switch: ${zone_2_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_2_name}"
           id: irrigation_controller_enable_2
         run_duration_number:
@@ -463,7 +496,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_2
       - valve_switch: ${zone_3_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_3_name}"
           id: irrigation_controller_enable_3
         run_duration_number:
@@ -474,7 +507,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_3
       - valve_switch: ${zone_4_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_4_name}"
           id: irrigation_controller_enable_4
         run_duration_number:
@@ -485,7 +518,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_4
       - valve_switch: ${zone_5_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_5_name}"
           id: irrigation_controller_enable_5
         run_duration_number:
@@ -496,7 +529,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_5
       - valve_switch: ${zone_6_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_6_name}"
           id: irrigation_controller_enable_6
         run_duration_number:
@@ -507,7 +540,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_6
       - valve_switch: ${zone_7_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_7_name}"
           id: irrigation_controller_enable_7
         run_duration_number:
@@ -518,7 +551,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: irrigation_controller_7
       - valve_switch: ${zone_8_name}
-        enable_switch: 
+        enable_switch:
           name: "Enable ${zone_8_name}"
           id: irrigation_controller_enable_8
         run_duration_number:
@@ -530,7 +563,7 @@ sprinkler:
         valve_switch_id: irrigation_controller_8
       # Expansion Board 1 - Zones 9-16 (address 0x20)
       - valve_switch: "Zone 9"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 9"
           id: ext_zone_enable_9
         run_duration_number:
@@ -541,7 +574,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_9_switch
       - valve_switch: "Zone 10"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 10"
           id: ext_zone_enable_10
         run_duration_number:
@@ -552,7 +585,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_10_switch
       - valve_switch: "Zone 11"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 11"
           id: ext_zone_enable_11
         run_duration_number:
@@ -563,7 +596,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_11_switch
       - valve_switch: "Zone 12"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 12"
           id: ext_zone_enable_12
         run_duration_number:
@@ -574,7 +607,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_12_switch
       - valve_switch: "Zone 13"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 13"
           id: ext_zone_enable_13
         run_duration_number:
@@ -585,7 +618,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_13_switch
       - valve_switch: "Zone 14"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 14"
           id: ext_zone_enable_14
         run_duration_number:
@@ -596,7 +629,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_14_switch
       - valve_switch: "Zone 15"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 15"
           id: ext_zone_enable_15
         run_duration_number:
@@ -607,7 +640,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_15_switch
       - valve_switch: "Zone 16"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 16"
           id: ext_zone_enable_16
         run_duration_number:
@@ -619,7 +652,7 @@ sprinkler:
         valve_switch_id: ext_zone_16_switch
       # Expansion Board 2 - Zones 17-24 (address 0x21)
       - valve_switch: "Zone 17"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 17"
           id: ext_zone_enable_17
         run_duration_number:
@@ -630,7 +663,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_17_switch
       - valve_switch: "Zone 18"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 18"
           id: ext_zone_enable_18
         run_duration_number:
@@ -641,7 +674,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_18_switch
       - valve_switch: "Zone 19"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 19"
           id: ext_zone_enable_19
         run_duration_number:
@@ -652,7 +685,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_19_switch
       - valve_switch: "Zone 20"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 20"
           id: ext_zone_enable_20
         run_duration_number:
@@ -663,7 +696,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_20_switch
       - valve_switch: "Zone 21"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 21"
           id: ext_zone_enable_21
         run_duration_number:
@@ -674,7 +707,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_21_switch
       - valve_switch: "Zone 22"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 22"
           id: ext_zone_enable_22
         run_duration_number:
@@ -685,7 +718,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_22_switch
       - valve_switch: "Zone 23"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 23"
           id: ext_zone_enable_23
         run_duration_number:
@@ -696,7 +729,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_23_switch
       - valve_switch: "Zone 24"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 24"
           id: ext_zone_enable_24
         run_duration_number:
@@ -708,7 +741,7 @@ sprinkler:
         valve_switch_id: ext_zone_24_switch
       # Expansion Board 3 - Zones 25-32 (address 0x22)
       - valve_switch: "Zone 25"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 25"
           id: ext_zone_enable_25
         run_duration_number:
@@ -719,7 +752,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_25_switch
       - valve_switch: "Zone 26"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 26"
           id: ext_zone_enable_26
         run_duration_number:
@@ -730,7 +763,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_26_switch
       - valve_switch: "Zone 27"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 27"
           id: ext_zone_enable_27
         run_duration_number:
@@ -741,7 +774,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_27_switch
       - valve_switch: "Zone 28"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 28"
           id: ext_zone_enable_28
         run_duration_number:
@@ -752,7 +785,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_28_switch
       - valve_switch: "Zone 29"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 29"
           id: ext_zone_enable_29
         run_duration_number:
@@ -763,7 +796,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_29_switch
       - valve_switch: "Zone 30"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 30"
           id: ext_zone_enable_30
         run_duration_number:
@@ -774,7 +807,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_30_switch
       - valve_switch: "Zone 31"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 31"
           id: ext_zone_enable_31
         run_duration_number:
@@ -785,7 +818,7 @@ sprinkler:
           icon: "mdi:timer-outline"
         valve_switch_id: ext_zone_31_switch
       - valve_switch: "Zone 32"
-        enable_switch: 
+        enable_switch:
           name: "Enable Zone 32"
           id: ext_zone_enable_32
         run_duration_number:
@@ -853,17 +886,6 @@ script:
     then:
       - lambda: |-
           ESP_LOGI("i2c_detect", "Scanning for expansion boards...");
-          id(i2c_bus_error) = false;
-          id(unknown_i2c_device) = false;
-          id(board_mismatch_error) = false;
-
-          // Get user-configured expected board count
-          int expected_boards = 0;
-          auto val = id(expansion_board_count).state;
-          if (val == "1") expected_boards = 1;
-          else if (val == "2") expected_boards = 2;
-          else if (val == "3") expected_boards = 3;
-          ESP_LOGI("i2c_detect", "User expects %d expansion board(s)", expected_boards);
 
           uint8_t addr1 = 0x20;
           auto err1 = id(i2c_bus).write(addr1, nullptr, 0);
@@ -880,40 +902,6 @@ script:
           id(board3_detected) = (err3 == esphome::i2c::ERROR_OK);
           ESP_LOGI("i2c_detect", "Board 3 (0x22): %s", id(board3_detected) ? "DETECTED" : "NOT FOUND");
 
-          // Scan for unknown I2C devices (common range 0x08-0x77)
-          for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
-            if (addr == 0x20 || addr == 0x21 || addr == 0x22) continue;
-            auto err = id(i2c_bus).write(addr, nullptr, 0);
-            if (err == esphome::i2c::ERROR_OK) {
-              ESP_LOGW("i2c_detect", "Unknown I2C device found at address 0x%02X", addr);
-              id(unknown_i2c_device) = true;
-            }
-          }
-
-          // Check for I2C bus error - if expected boards > 0 but nothing responds on the bus
-          if (expected_boards > 0 && err1 != esphome::i2c::ERROR_OK && err2 != esphome::i2c::ERROR_OK && err3 != esphome::i2c::ERROR_OK) {
-            bool any_device = id(unknown_i2c_device);
-            if (!any_device) {
-              ESP_LOGE("i2c_detect", "No I2C devices detected on bus - possible bus error");
-              id(i2c_bus_error) = true;
-            }
-          }
-
-          // Check for board mismatch - expected board is missing
-          if (expected_boards >= 1 && !id(board1_detected)) {
-            ESP_LOGE("i2c_detect", "MISMATCH: Board 1 expected but not detected!");
-            id(board_mismatch_error) = true;
-          }
-          if (expected_boards >= 2 && !id(board2_detected)) {
-            ESP_LOGE("i2c_detect", "MISMATCH: Board 2 expected but not detected!");
-            id(board_mismatch_error) = true;
-          }
-          if (expected_boards >= 3 && !id(board3_detected)) {
-            ESP_LOGE("i2c_detect", "MISMATCH: Board 3 expected but not detected!");
-            id(board_mismatch_error) = true;
-          }
-
-          // Disable zones for boards that are not detected
           if (!id(board1_detected)) {
             ESP_LOGI("i2c_detect", "Disabling zones 9-16");
             id(ext_zone_enable_9).turn_off();
@@ -950,101 +938,34 @@ script:
             id(ext_zone_enable_32).turn_off();
           }
       - component.update: detected_zones
-      - script.execute: update_status_led
-
-  - id: update_status_led
-    then:
-      - lambda: |-
-          // LED Status Priority (highest to lowest):
-          // 1. I2C bus error - Red pulse
-          // 2. Board mismatch (expected but missing) - Orange pulse
-          // 3. OTA update in progress - Cyan fast pulse (handled by OTA triggers)
-          // 4. Unknown I2C device - White pulse
-          // 5. Zone actively running - Solid green (no pulse)
-          // 6. WiFi disconnected - Blue pulse (handled by wifi on_disconnect)
-          // 7. API/HA not connected - Yellow pulse
-          // 8. Captive portal active - Magenta pulse
-          // 9. Normal (WiFi connected, idle) - Green pulse
-
-          if (id(i2c_bus_error)) {
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(1.0, 0.0, 0.0);
-            call.set_effect("Pulse");
-            call.perform();
-            return;
-          }
-
-          if (id(board_mismatch_error)) {
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(1.0, 0.4, 0.0);
-            call.set_effect("Pulse");
-            call.perform();
-            return;
-          }
-
-          if (id(unknown_i2c_device)) {
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(1.0, 1.0, 1.0);
-            call.set_effect("Pulse");
-            call.perform();
-            return;
-          }
-
-          // Check if any zone is actively running
-          bool zone_active = id(${devicename}).active_valve().has_value();
-          if (zone_active) {
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(0.0, 1.0, 0.0);
-            call.set_effect("None");
-            call.perform();
-            return;
-          }
-
-          if (!id(wifi_component).is_connected()) {
-            // Check if captive portal is active (AP mode, no WiFi)
-            if (id(captive_portal_component).is_active()) {
-              auto call = id(status_led).turn_on();
-              call.set_brightness(0.8);
-              call.set_rgb(1.0, 0.0, 1.0);
-              call.set_effect("Pulse");
-              call.perform();
-              return;
-            }
-            // WiFi disconnected but not in captive portal
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(0.0, 0.0, 1.0);
-            call.set_effect("Pulse");
-            call.perform();
-            return;
-          }
-
-          if (!id(api_server).is_connected()) {
-            auto call = id(status_led).turn_on();
-            call.set_brightness(0.8);
-            call.set_rgb(1.0, 1.0, 0.0);
-            call.set_effect("Pulse");
-            call.perform();
-            return;
-          }
-
-          // Default: WiFi connected, HA connected, idle - green pulse
-          auto call = id(status_led).turn_on();
-          call.set_brightness(0.8);
-          call.set_rgb(0.0, 1.0, 0.0);
-          call.set_effect("Pulse");
-          call.perform();
 
   - id: run_all_zones
     then:
-      - logger.log: "Starting scheduled irrigation cycle"
-      - lambda: 'id(scheduled_run_active) = true;'
-      - switch.turn_on: auto_advance_switch
-      - switch.turn_on: main_switch
+      - if:
+          condition:
+            lambda: 'return id(rain_sensor_enabled).state && id(rain_sensor_active);'
+          then:
+            - logger.log: "Scheduled irrigation skipped - rain detected"
+            - text_sensor.template.publish:
+                id: valve_status
+                state: "Schedule Skipped - Rain"
+          else:
+            - if:
+                condition:
+                  lambda: |-
+                    if (!id(rain_delay_enabled).state) return false;
+                    if (!id(homeassistant_time).now().is_valid()) return false;
+                    return id(homeassistant_time).now().timestamp < id(rain_delay_until);
+                then:
+                  - logger.log: "Scheduled irrigation skipped - rain delay active"
+                  - text_sensor.template.publish:
+                      id: valve_status
+                      state: "Schedule Skipped - Rain Delay"
+                else:
+                  - logger.log: "Starting scheduled irrigation cycle"
+                  - lambda: 'id(scheduled_run_active) = true;'
+                  - switch.turn_on: auto_advance_switch
+                  - switch.turn_on: main_switch
 
   - id: check_pump_off
     then:
@@ -1053,22 +974,22 @@ script:
             lambda: 'return id(zone8_mode).state == "Pump Start Relay";'
           then:
             - lambda: |-
-                bool any_active = 
-                  id(irrigation_controller_1).state || id(irrigation_controller_2).state || 
-                  id(irrigation_controller_3).state || id(irrigation_controller_4).state || 
-                  id(irrigation_controller_5).state || id(irrigation_controller_6).state || 
+                bool any_active =
+                  id(irrigation_controller_1).state || id(irrigation_controller_2).state ||
+                  id(irrigation_controller_3).state || id(irrigation_controller_4).state ||
+                  id(irrigation_controller_5).state || id(irrigation_controller_6).state ||
                   id(irrigation_controller_7).state ||
-                  id(ext_zone_9_switch).state || id(ext_zone_10_switch).state || 
-                  id(ext_zone_11_switch).state || id(ext_zone_12_switch).state || 
-                  id(ext_zone_13_switch).state || id(ext_zone_14_switch).state || 
+                  id(ext_zone_9_switch).state || id(ext_zone_10_switch).state ||
+                  id(ext_zone_11_switch).state || id(ext_zone_12_switch).state ||
+                  id(ext_zone_13_switch).state || id(ext_zone_14_switch).state ||
                   id(ext_zone_15_switch).state || id(ext_zone_16_switch).state ||
-                  id(ext_zone_17_switch).state || id(ext_zone_18_switch).state || 
-                  id(ext_zone_19_switch).state || id(ext_zone_20_switch).state || 
-                  id(ext_zone_21_switch).state || id(ext_zone_22_switch).state || 
+                  id(ext_zone_17_switch).state || id(ext_zone_18_switch).state ||
+                  id(ext_zone_19_switch).state || id(ext_zone_20_switch).state ||
+                  id(ext_zone_21_switch).state || id(ext_zone_22_switch).state ||
                   id(ext_zone_23_switch).state || id(ext_zone_24_switch).state ||
-                  id(ext_zone_25_switch).state || id(ext_zone_26_switch).state || 
-                  id(ext_zone_27_switch).state || id(ext_zone_28_switch).state || 
-                  id(ext_zone_29_switch).state || id(ext_zone_30_switch).state || 
+                  id(ext_zone_25_switch).state || id(ext_zone_26_switch).state ||
+                  id(ext_zone_27_switch).state || id(ext_zone_28_switch).state ||
+                  id(ext_zone_29_switch).state || id(ext_zone_30_switch).state ||
                   id(ext_zone_31_switch).state || id(ext_zone_32_switch).state;
                 if (!any_active) {
                   id(irrigation_controller_8).turn_off();
@@ -1088,9 +1009,67 @@ interval:
           if (id(zone8_mode).state != "Zone" && id(irrigation_controller_enable_8).state) {
             id(irrigation_controller_enable_8).turn_off();
           }
-  - interval: 10s
+  - interval: 2s
     then:
-      - script.execute: update_status_led
+      - lambda: |-
+          // Rain sensor polling - skip if components not ready yet
+          if (id(rain_sensor_type).state.empty()) return;
+          if (!id(rain_sensor_enabled).state) {
+            id(rain_sensor_active) = false;
+            return;
+          }
+
+          // NC sensor: circuit closed when dry (LOW), opens when wet (HIGH with pullup)
+          // NO sensor: circuit open when dry (HIGH with pullup), closes when wet (LOW)
+          bool is_nc = (id(rain_sensor_type).state == "Normally Closed (NC)");
+          bool pin_state = id(rain_sensor_raw).state;
+          bool rain_now = is_nc ? pin_state : !pin_state;
+          bool was_active = id(rain_sensor_active);
+          id(rain_sensor_active) = rain_now;
+
+          // Rain just started
+          if (rain_now && !was_active) {
+            ESP_LOGI("rain_sensor", "Rain detected! Stopping irrigation.");
+            id(valve_status).publish_state("Rain Detected - Stopped");
+            if (id(rain_delay_enabled).state && id(homeassistant_time).now().is_valid()) {
+              id(rain_delay_until) = id(homeassistant_time).now().timestamp + (uint32_t)(id(rain_delay_hours).state * 3600);
+              ESP_LOGI("rain_sensor", "Rain delay set for %.0f hours", id(rain_delay_hours).state);
+            }
+            if (id(main_switch).state) {
+              id(main_switch).turn_off();
+            }
+            // Update LED to rain effect
+            if (id(wifi_component).is_connected()) {
+              auto call = id(status_led).turn_on();
+              call.set_brightness(0.8f);
+              call.set_effect("Rain WiFi Connected");
+              call.perform();
+            } else {
+              auto call = id(status_led).turn_on();
+              call.set_brightness(0.8f);
+              call.set_effect("Rain WiFi Disconnected");
+              call.perform();
+            }
+          }
+          // Rain just cleared
+          if (!rain_now && was_active) {
+            ESP_LOGI("rain_sensor", "Rain sensor cleared.");
+            id(valve_status).publish_state("Rain Cleared");
+            // Restore normal LED
+            if (id(wifi_component).is_connected()) {
+              auto call = id(status_led).turn_on();
+              call.set_brightness(0.8f);
+              call.set_rgb(0.0f, 1.0f, 0.0f);
+              call.set_effect("Pulse");
+              call.perform();
+            } else {
+              auto call = id(status_led).turn_on();
+              call.set_brightness(0.8f);
+              call.set_rgb(0.0f, 0.0f, 1.0f);
+              call.set_effect("Pulse");
+              call.perform();
+            }
+          }
 
 switch:
   - platform: template
@@ -1157,12 +1136,26 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     icon: "mdi:calendar"
 
+  - platform: template
+    id: rain_sensor_enabled
+    name: "Rain Sensor Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:weather-rainy"
+
+  - platform: template
+    id: rain_delay_enabled
+    name: "Rain Delay Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:timer-sand"
+
   - platform: gpio
     id: irrigation_controller_1
     name: "Relay 1"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO45
       inverted: false
     on_turn_on:
@@ -1202,7 +1195,7 @@ switch:
     name: "Relay 2"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO35
       inverted: false
     on_turn_on:
@@ -1242,7 +1235,7 @@ switch:
     name: "Relay 3"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO36
       inverted: false
     on_turn_on:
@@ -1282,7 +1275,7 @@ switch:
     name: "Relay 4"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO37
       inverted: false
     on_turn_on:
@@ -1322,7 +1315,7 @@ switch:
     name: "Relay 5"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO38
       inverted: false
     on_turn_on:
@@ -1362,7 +1355,7 @@ switch:
     name: "Relay 6"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO39
       inverted: false
     on_turn_on:
@@ -1402,7 +1395,7 @@ switch:
     name: "Relay 7"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO40
       inverted: false
     on_turn_on:
@@ -1442,7 +1435,7 @@ switch:
     name: "Relay 8"
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
-    pin: 
+    pin:
       number: GPIO41
       inverted: false
     on_turn_on:
