@@ -40,7 +40,7 @@ An ESP32-S3 based smart irrigation controller with up to 32 zones, designed for 
 - Zone 6: GPIO39
 - Zone 7: GPIO40
 - Zone 8: GPIO41
-- Rain Sensor: GPIO4 (configurable via substitution)
+- Rain Sensor: GPIO18 (configurable via substitution)
 
 ### Expansion Boards (Optional)
 - MCP23017 I2C I/O Expanders

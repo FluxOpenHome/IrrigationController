@@ -79,7 +79,7 @@ mobile app:
 1.  Power on the controller — it will begin advertising via Bluetooth
     automatically
 
-2.  Open the Home Assistant Companion app on your phone
+2.  Open the Home Assistant Companion app on your phone or PC (with bluetooth)
 
 3.  Go to **Settings → Devices & Services**
 
