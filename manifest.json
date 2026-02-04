@@ -1,6 +1,6 @@
 {
   "name": "Irrigation Controller",
-  "version": "1.2.8",
+  "version": "1.2.7",
   "builds": [
     {
       "chipFamily": "ESP32-S3",
