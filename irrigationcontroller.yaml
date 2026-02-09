@@ -1054,6 +1054,95 @@ script:
 
 # Enforce zone 8 enable state based on mode
 interval:
+  # Schedule check - runs every minute
+  - interval: 1min
+    then:
+      - lambda: |-
+          auto time = id(homeassistant_time).now();
+          if (!time.is_valid()) {
+            return;
+          }
+
+          if (!id(schedule_enabled).state) {
+            return;
+          }
+
+          int current_hour = time.hour;
+          int current_minute = time.minute;
+          int weekday = time.day_of_week;
+
+          bool day_enabled = false;
+          if (weekday == 1 && id(sunday_enabled).state) day_enabled = true;
+          else if (weekday == 2 && id(monday_enabled).state) day_enabled = true;
+          else if (weekday == 3 && id(tuesday_enabled).state) day_enabled = true;
+          else if (weekday == 4 && id(wednesday_enabled).state) day_enabled = true;
+          else if (weekday == 5 && id(thursday_enabled).state) day_enabled = true;
+          else if (weekday == 6 && id(friday_enabled).state) day_enabled = true;
+          else if (weekday == 7 && id(saturday_enabled).state) day_enabled = true;
+
+          if (!day_enabled) {
+            return;
+          }
+
+          auto convert_to_24hr = [](const std::string& time_str) -> std::string {
+            if (time_str.length() < 5) return time_str;
+
+            bool is_pm = (time_str.find("PM") != std::string::npos || time_str.find("pm") != std::string::npos);
+            bool is_am = (time_str.find("AM") != std::string::npos || time_str.find("am") != std::string::npos);
+
+            if (!is_am && !is_pm) return time_str;
+
+            std::string time_part = time_str.substr(0, time_str.find_first_of("AaPp"));
+            time_part.erase(std::remove(time_part.begin(), time_part.end(), ' '), time_part.end());
+
+            if (time_part.length() < 4 || time_part.find(':') == std::string::npos) {
+              return time_str;
+            }
+
+            size_t colon_pos = time_part.find(':');
+            int hour = std::stoi(time_part.substr(0, colon_pos));
+            std::string minute_str = time_part.substr(colon_pos + 1);
+
+            if (is_pm && hour != 12) {
+              hour += 12;
+            } else if (is_am && hour == 12) {
+              hour = 0;
+            }
+
+            char result[6];
+            snprintf(result, sizeof(result), "%02d:%s", hour, minute_str.c_str());
+            return std::string(result);
+          };
+
+          bool time_matches = false;
+          std::string start_times[] = {
+            id(schedule_start_time_1).state,
+            id(schedule_start_time_2).state,
+            id(schedule_start_time_3).state,
+            id(schedule_start_time_4).state
+          };
+
+          for (int i = 0; i < 4; i++) {
+            std::string start_time = start_times[i];
+            if (start_time.empty()) continue;
+
+            std::string normalized_time = convert_to_24hr(start_time);
+
+            if (normalized_time.length() >= 5 && normalized_time[2] == ':') {
+              int schedule_hour = std::stoi(normalized_time.substr(0, 2));
+              int schedule_minute = std::stoi(normalized_time.substr(3, 2));
+              if (current_hour == schedule_hour && current_minute == schedule_minute) {
+                time_matches = true;
+                break;
+              }
+            }
+          }
+
+          if (time_matches) {
+            ESP_LOGI("schedule", "Starting scheduled irrigation");
+            id(run_all_zones).execute();
+          }
+
   - interval: 5s
     then:
       - lambda: |-
