@@ -1,0 +1,951 @@
+blueprint:
+  name: "Smart Irrigation Controller"
+  description: >
+    A comprehensive smart irrigation automation for the Flux Open Home Irrigation Controller.
+    This blueprint reads the controller's existing schedule times, day-of-week switches, and
+    schedule enabled switch directly — no need to duplicate scheduling configuration.
+    Features include weather-aware rain and freeze skipping (recommended: National Weather Service
+    integration), zone-aware moisture probe mapping (up to 10 probes), seasonal duration adjustments
+    (manual multiplier and/or automatic temperature-based scaling), and persistent notifications.
+    All optional features gracefully degrade when not configured.
+  domain: automation
+  author: "Flux Open Home"
+  source_url: "https://github.com/FluxOpenHome/IrrigationController/blob/main/blueprints/smart_irrigation.yaml"
+
+  input:
+    # ──────────────────────────────────────────────
+    # Controller Entities (Required)
+    # ──────────────────────────────────────────────
+    irrigation_switch:
+      name: "Irrigation Main Switch"
+      description: "The Start/Stop/Resume switch entity for your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    auto_advance_switch:
+      name: "Auto Advance Switch"
+      description: "The Auto Advance switch entity for your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    # ──────────────────────────────────────────────
+    # Controller Schedule Entities
+    # The blueprint reads these directly from your
+    # controller — no need to re-enter times or days.
+    # ──────────────────────────────────────────────
+    schedule_enabled_switch:
+      name: "Schedule Enabled Switch"
+      description: "The 'Schedule Enabled' switch entity on your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    schedule_time_1:
+      name: "Schedule Start Time 1"
+      description: "The 'Schedule Start Time 1' text entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: text
+
+    schedule_time_2:
+      name: "Schedule Start Time 2"
+      description: "The 'Schedule Start Time 2' text entity from your Irrigation Controller (may be empty if unused)."
+      selector:
+        entity:
+          domain: text
+
+    schedule_time_3:
+      name: "Schedule Start Time 3"
+      description: "The 'Schedule Start Time 3' text entity from your Irrigation Controller (may be empty if unused)."
+      selector:
+        entity:
+          domain: text
+
+    schedule_time_4:
+      name: "Schedule Start Time 4"
+      description: "The 'Schedule Start Time 4' text entity from your Irrigation Controller (may be empty if unused)."
+      selector:
+        entity:
+          domain: text
+
+    monday_switch:
+      name: "Schedule: Monday"
+      description: "The 'Schedule: Monday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    tuesday_switch:
+      name: "Schedule: Tuesday"
+      description: "The 'Schedule: Tuesday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    wednesday_switch:
+      name: "Schedule: Wednesday"
+      description: "The 'Schedule: Wednesday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    thursday_switch:
+      name: "Schedule: Thursday"
+      description: "The 'Schedule: Thursday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    friday_switch:
+      name: "Schedule: Friday"
+      description: "The 'Schedule: Friday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    saturday_switch:
+      name: "Schedule: Saturday"
+      description: "The 'Schedule: Saturday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    sunday_switch:
+      name: "Schedule: Sunday"
+      description: "The 'Schedule: Sunday' switch entity from your Irrigation Controller."
+      selector:
+        entity:
+          domain: switch
+
+    # ──────────────────────────────────────────────
+    # Pre-Check Timing
+    # ──────────────────────────────────────────────
+    pre_check_minutes:
+      name: "Pre-Check Minutes Before Schedule"
+      description: >
+        How many minutes before a scheduled start time should the blueprint evaluate
+        weather and moisture conditions? If conditions are bad, the schedule will be
+        temporarily disabled and re-enabled after the scheduled time passes.
+      default: 5
+      selector:
+        number:
+          min: 2
+          max: 30
+          step: 1
+          unit_of_measurement: "min"
+          mode: slider
+
+    # ──────────────────────────────────────────────
+    # Weather (Optional)
+    # Recommended: National Weather Service (NWS) integration
+    # ──────────────────────────────────────────────
+    weather_entity:
+      name: "Weather Entity (Optional)"
+      description: >
+        Select your weather integration entity for forecast-based rain and freeze skipping.
+        The National Weather Service (NWS) integration is recommended (weather.forecast_home).
+        Leave empty to disable weather-based features.
+      default: {}
+      selector:
+        entity:
+          domain: weather
+
+    rain_skip_enabled:
+      name: "Enable Rain Forecast Skip"
+      description: "Skip irrigation when rain is forecast above the probability threshold."
+      default: true
+      selector:
+        boolean:
+
+    rain_probability_threshold:
+      name: "Rain Probability Threshold (%)"
+      description: "Skip watering when forecast precipitation probability exceeds this percentage."
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 5
+          unit_of_measurement: "%"
+          mode: slider
+
+    forecast_hours:
+      name: "Forecast Lookahead (Hours)"
+      description: "How many hours ahead to check the weather forecast for rain or freeze conditions."
+      default: 24
+      selector:
+        number:
+          min: 1
+          max: 48
+          step: 1
+          unit_of_measurement: "hours"
+          mode: slider
+
+    freeze_skip_enabled:
+      name: "Enable Freeze Protection Skip"
+      description: "Skip irrigation when the forecast temperature drops below the freeze threshold."
+      default: true
+      selector:
+        boolean:
+
+    freeze_temp_f:
+      name: "Freeze Temperature Threshold (F)"
+      description: "Skip watering when the forecast low temperature is below this value (Fahrenheit)."
+      default: 35
+      selector:
+        number:
+          min: 20
+          max: 50
+          step: 1
+          unit_of_measurement: "°F"
+          mode: slider
+
+    # ──────────────────────────────────────────────
+    # Moisture Sensors (Optional - 10 Slots)
+    # Each slot: entity selector + zone mapping
+    # ──────────────────────────────────────────────
+    moisture_skip_enabled:
+      name: "Enable Moisture-Based Zone Skipping"
+      description: "When enabled, zones mapped to moisture probes reading above the threshold will be skipped."
+      default: false
+      selector:
+        boolean:
+
+    moisture_threshold:
+      name: "Moisture Threshold (%)"
+      description: "Zones mapped to a moisture probe reading above this value will be skipped."
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 5
+          unit_of_measurement: "%"
+          mode: slider
+
+    # Probe 1
+    moisture_sensor_1:
+      name: "Moisture Probe 1 (Optional)"
+      description: "Moisture percentage sensor entity for probe 1. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_1:
+      name: "Zones for Probe 1"
+      description: "Comma-separated zone numbers covered by probe 1 (e.g. '1,2,3')."
+      default: ""
+      selector:
+        text:
+
+    # Probe 2
+    moisture_sensor_2:
+      name: "Moisture Probe 2 (Optional)"
+      description: "Moisture percentage sensor entity for probe 2. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_2:
+      name: "Zones for Probe 2"
+      description: "Comma-separated zone numbers covered by probe 2 (e.g. '4,5')."
+      default: ""
+      selector:
+        text:
+
+    # Probe 3
+    moisture_sensor_3:
+      name: "Moisture Probe 3 (Optional)"
+      description: "Moisture percentage sensor entity for probe 3. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_3:
+      name: "Zones for Probe 3"
+      description: "Comma-separated zone numbers covered by probe 3."
+      default: ""
+      selector:
+        text:
+
+    # Probe 4
+    moisture_sensor_4:
+      name: "Moisture Probe 4 (Optional)"
+      description: "Moisture percentage sensor entity for probe 4. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_4:
+      name: "Zones for Probe 4"
+      description: "Comma-separated zone numbers covered by probe 4."
+      default: ""
+      selector:
+        text:
+
+    # Probe 5
+    moisture_sensor_5:
+      name: "Moisture Probe 5 (Optional)"
+      description: "Moisture percentage sensor entity for probe 5. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_5:
+      name: "Zones for Probe 5"
+      description: "Comma-separated zone numbers covered by probe 5."
+      default: ""
+      selector:
+        text:
+
+    # Probe 6
+    moisture_sensor_6:
+      name: "Moisture Probe 6 (Optional)"
+      description: "Moisture percentage sensor entity for probe 6. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_6:
+      name: "Zones for Probe 6"
+      description: "Comma-separated zone numbers covered by probe 6."
+      default: ""
+      selector:
+        text:
+
+    # Probe 7
+    moisture_sensor_7:
+      name: "Moisture Probe 7 (Optional)"
+      description: "Moisture percentage sensor entity for probe 7. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_7:
+      name: "Zones for Probe 7"
+      description: "Comma-separated zone numbers covered by probe 7."
+      default: ""
+      selector:
+        text:
+
+    # Probe 8
+    moisture_sensor_8:
+      name: "Moisture Probe 8 (Optional)"
+      description: "Moisture percentage sensor entity for probe 8. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_8:
+      name: "Zones for Probe 8"
+      description: "Comma-separated zone numbers covered by probe 8."
+      default: ""
+      selector:
+        text:
+
+    # Probe 9
+    moisture_sensor_9:
+      name: "Moisture Probe 9 (Optional)"
+      description: "Moisture percentage sensor entity for probe 9. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_9:
+      name: "Zones for Probe 9"
+      description: "Comma-separated zone numbers covered by probe 9."
+      default: ""
+      selector:
+        text:
+
+    # Probe 10
+    moisture_sensor_10:
+      name: "Moisture Probe 10 (Optional)"
+      description: "Moisture percentage sensor entity for probe 10. Leave empty if not used."
+      default: {}
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+
+    zones_sensor_10:
+      name: "Zones for Probe 10"
+      description: "Comma-separated zone numbers covered by probe 10."
+      default: ""
+      selector:
+        text:
+
+    # ──────────────────────────────────────────────
+    # Zone Enable Switches (for moisture-based disabling)
+    # ──────────────────────────────────────────────
+    zone_enable_switches:
+      name: "Zone Enable Switches (Optional)"
+      description: >
+        Select ALL zone enable switch entities in order (Zone 1 first, Zone 2 second, etc.).
+        Required for moisture-based zone skipping. The position in this list corresponds to
+        the zone number used in the moisture probe zone mappings.
+      default: []
+      selector:
+        entity:
+          domain: switch
+          multiple: true
+
+    # ──────────────────────────────────────────────
+    # Seasonal Adjustment
+    # ──────────────────────────────────────────────
+    seasonal_mode:
+      name: "Seasonal Adjustment Mode"
+      description: >
+        How to adjust watering durations seasonally.
+        'none' = no adjustment, 'manual' = use the manual multiplier below,
+        'auto_temperature' = scale based on forecast high temperature,
+        'both' = multiply manual and temperature adjustments together.
+      default: "none"
+      selector:
+        select:
+          options:
+            - label: "None"
+              value: "none"
+            - label: "Manual Multiplier"
+              value: "manual"
+            - label: "Auto (Temperature-Based)"
+              value: "auto_temperature"
+            - label: "Both (Manual + Temperature)"
+              value: "both"
+
+    manual_multiplier:
+      name: "Manual Watering Multiplier (%)"
+      description: "Scale all zone durations by this percentage. 100% = normal, 150% = 50% longer, 50% = half duration."
+      default: 100
+      selector:
+        number:
+          min: 25
+          max: 200
+          step: 5
+          unit_of_measurement: "%"
+          mode: slider
+
+    temp_baseline_f:
+      name: "Temperature Baseline (F)"
+      description: >
+        Baseline temperature for automatic adjustment. For every degree (F) the forecast high
+        exceeds this value, zone durations increase by ~1%. Below baseline, durations are not reduced.
+      default: 80
+      selector:
+        number:
+          min: 60
+          max: 110
+          step: 1
+          unit_of_measurement: "°F"
+          mode: slider
+
+    # ──────────────────────────────────────────────
+    # Zone Duration Entities (for seasonal adjustment)
+    # ──────────────────────────────────────────────
+    zone_durations:
+      name: "Zone Duration Entities (Optional)"
+      description: >
+        Select all zone duration number entities in order (Zone 1 first, etc.).
+        Required for seasonal duration adjustment. The blueprint will temporarily
+        modify these values before the cycle and restore them afterward.
+      default: []
+      selector:
+        entity:
+          domain: number
+          multiple: true
+
+    # ──────────────────────────────────────────────
+    # Notifications
+    # ──────────────────────────────────────────────
+    enable_notifications:
+      name: "Enable Notifications"
+      description: "Send persistent notifications for skipped runs, cycle starts, and completions."
+      default: true
+      selector:
+        boolean:
+
+# ════════════════════════════════════════════════════
+# Variables
+# ════════════════════════════════════════════════════
+variables:
+  # Controller schedule entities
+  input_schedule_enabled: !input schedule_enabled_switch
+  input_sched_time_1: !input schedule_time_1
+  input_sched_time_2: !input schedule_time_2
+  input_sched_time_3: !input schedule_time_3
+  input_sched_time_4: !input schedule_time_4
+  input_monday: !input monday_switch
+  input_tuesday: !input tuesday_switch
+  input_wednesday: !input wednesday_switch
+  input_thursday: !input thursday_switch
+  input_friday: !input friday_switch
+  input_saturday: !input saturday_switch
+  input_sunday: !input sunday_switch
+  input_pre_check: !input pre_check_minutes
+
+  # Weather
+  input_weather_entity: !input weather_entity
+  input_rain_skip: !input rain_skip_enabled
+  input_rain_threshold: !input rain_probability_threshold
+  input_forecast_hours: !input forecast_hours
+  input_freeze_skip: !input freeze_skip_enabled
+  input_freeze_temp: !input freeze_temp_f
+
+  # Moisture
+  input_moisture_skip: !input moisture_skip_enabled
+  input_moisture_threshold: !input moisture_threshold
+  input_zone_enable_switches: !input zone_enable_switches
+
+  # Seasonal
+  input_seasonal_mode: !input seasonal_mode
+  input_manual_multiplier: !input manual_multiplier
+  input_temp_baseline: !input temp_baseline_f
+  input_zone_durations: !input zone_durations
+
+  # Notifications
+  input_notifications: !input enable_notifications
+
+  # Moisture sensor entity IDs
+  ms1: !input moisture_sensor_1
+  ms2: !input moisture_sensor_2
+  ms3: !input moisture_sensor_3
+  ms4: !input moisture_sensor_4
+  ms5: !input moisture_sensor_5
+  ms6: !input moisture_sensor_6
+  ms7: !input moisture_sensor_7
+  ms8: !input moisture_sensor_8
+  ms9: !input moisture_sensor_9
+  ms10: !input moisture_sensor_10
+
+  # Zone mappings (comma-separated strings)
+  zs1: !input zones_sensor_1
+  zs2: !input zones_sensor_2
+  zs3: !input zones_sensor_3
+  zs4: !input zones_sensor_4
+  zs5: !input zones_sensor_5
+  zs6: !input zones_sensor_6
+  zs7: !input zones_sensor_7
+  zs8: !input zones_sensor_8
+  zs9: !input zones_sensor_9
+  zs10: !input zones_sensor_10
+
+# ════════════════════════════════════════════════════
+# Trigger: Every minute, check if we are within the
+# pre-check window of any scheduled start time.
+# ════════════════════════════════════════════════════
+trigger:
+  - platform: time_pattern
+    minutes: "/1"
+
+# ════════════════════════════════════════════════════
+# Conditions:
+# 1. Schedule must be enabled on the controller
+# 2. Today's day of week must be enabled
+# 3. Current time must be exactly pre_check_minutes
+#    before one of the 4 schedule start times
+# ════════════════════════════════════════════════════
+condition:
+  # Schedule must be enabled
+  - condition: template
+    value_template: "{{ is_state(input_schedule_enabled, 'on') }}"
+
+  # Day of week must be enabled
+  - condition: template
+    value_template: >-
+      {% set dow = now().isoweekday() %}
+      {{ (dow == 1 and is_state(input_monday, 'on')) or
+         (dow == 2 and is_state(input_tuesday, 'on')) or
+         (dow == 3 and is_state(input_wednesday, 'on')) or
+         (dow == 4 and is_state(input_thursday, 'on')) or
+         (dow == 5 and is_state(input_friday, 'on')) or
+         (dow == 6 and is_state(input_saturday, 'on')) or
+         (dow == 7 and is_state(input_sunday, 'on')) }}
+
+  # Current time must be pre_check_minutes before a schedule time
+  - condition: template
+    value_template: >-
+      {% set current_minutes = now().hour * 60 + now().minute %}
+      {% set pre = input_pre_check | int(5) %}
+      {% set ns = namespace(match=false) %}
+      {% set time_entities = [input_sched_time_1, input_sched_time_2, input_sched_time_3, input_sched_time_4] %}
+      {% for entity_id in time_entities %}
+        {% set raw = states(entity_id) | default('') | trim %}
+        {% if raw | length > 0 and ':' in raw %}
+          {% set raw_lower = raw | lower %}
+          {% set has_ampm = 'am' in raw_lower or 'pm' in raw_lower %}
+          {% set is_pm = 'pm' in raw_lower %}
+          {% set clean = raw_lower | replace('am','') | replace('pm','') | trim %}
+          {% set parts = clean.split(':') %}
+          {% set hh = parts[0] | int(0) %}
+          {% set mm = parts[1] | int(0) %}
+          {% if has_ampm %}
+            {% if hh == 12 %}{% set hh = 0 %}{% endif %}
+            {% if is_pm %}{% set hh = hh + 12 %}{% endif %}
+          {% endif %}
+          {% if hh >= 0 and hh <= 23 and mm >= 0 and mm <= 59 %}
+            {% set sched_minutes = hh * 60 + mm %}
+            {% set target_minutes = (sched_minutes - pre + 1440) % 1440 %}
+            {% if current_minutes == target_minutes %}
+              {% set ns.match = true %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.match }}
+
+# ════════════════════════════════════════════════════
+# Actions
+# ════════════════════════════════════════════════════
+action:
+  # ── Step 1: Initialize tracking variables ──
+  - variables:
+      skip_reason: ""
+      should_skip: false
+      wet_zones: []
+      original_durations: {}
+      seasonal_multiplier: 1.0
+      forecast_rain_prob: 0
+      forecast_low_temp: 999
+      forecast_high_temp: 0
+
+  # ── Step 2: Weather Forecast Check ──
+  - if:
+      - condition: template
+        value_template: >-
+          {{ input_weather_entity not in ['', None, 'unknown', 'unavailable', {}] }}
+    then:
+      - action: weather.get_forecasts
+        data:
+          type: hourly
+        target:
+          entity_id: "{{ input_weather_entity }}"
+        response_variable: forecast_response
+
+      - variables:
+          weather_entity_id: "{{ input_weather_entity }}"
+          forecasts: >-
+            {{ forecast_response[weather_entity_id]['forecast'][:([input_forecast_hours, 48] | min)] }}
+          forecast_rain_prob: >-
+            {{ forecasts | map(attribute='precipitation_probability', default=0) | max | default(0) }}
+          forecast_low_temp: >-
+            {{ forecasts | map(attribute='temperature', default=999) | min | default(999) }}
+          forecast_high_temp: >-
+            {{ forecasts | map(attribute='temperature', default=0) | max | default(0) }}
+
+      # Check rain skip
+      - if:
+          - condition: template
+            value_template: >-
+              {{ input_rain_skip and (forecast_rain_prob | float(0)) > (input_rain_threshold | float(50)) }}
+        then:
+          - variables:
+              should_skip: true
+              skip_reason: >-
+                Rain forecast ({{ forecast_rain_prob }}% probability, threshold: {{ input_rain_threshold }}%)
+
+      # Check freeze skip (only if not already skipping)
+      - if:
+          - condition: template
+            value_template: >-
+              {{ not should_skip and input_freeze_skip and (forecast_low_temp | float(999)) < (input_freeze_temp | float(35)) }}
+        then:
+          - variables:
+              should_skip: true
+              skip_reason: >-
+                Freeze warning (forecast low: {{ forecast_low_temp }}°F, threshold: {{ input_freeze_temp }}°F)
+
+  # ── Step 3: Moisture Check (only if not already skipping) ──
+  - if:
+      - condition: template
+        value_template: "{{ not should_skip and input_moisture_skip }}"
+    then:
+      - variables:
+          wet_zones: >-
+            {% set ns = namespace(zones=[]) %}
+            {% set probes = [
+              (ms1, zs1), (ms2, zs2), (ms3, zs3), (ms4, zs4), (ms5, zs5),
+              (ms6, zs6), (ms7, zs7), (ms8, zs8), (ms9, zs9), (ms10, zs10)
+            ] %}
+            {% for sensor, zone_str in probes %}
+              {% if sensor not in ['', None, 'unknown', 'unavailable', {}] and zone_str | length > 0 %}
+                {% set reading = states(sensor) | float(-1) %}
+                {% if reading >= 0 and reading > (input_moisture_threshold | float(60)) %}
+                  {% for z in zone_str.split(',') %}
+                    {% set zone_num = z | trim | int(0) %}
+                    {% if zone_num > 0 and zone_num not in ns.zones %}
+                      {% set ns.zones = ns.zones + [zone_num] %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.zones }}
+          moisture_readings: >-
+            {% set ns = namespace(readings=[]) %}
+            {% set probes = [
+              (ms1, zs1, 1), (ms2, zs2, 2), (ms3, zs3, 3), (ms4, zs4, 4), (ms5, zs5, 5),
+              (ms6, zs6, 6), (ms7, zs7, 7), (ms8, zs8, 8), (ms9, zs9, 9), (ms10, zs10, 10)
+            ] %}
+            {% for sensor, zone_str, num in probes %}
+              {% if sensor not in ['', None, 'unknown', 'unavailable', {}] and zone_str | length > 0 %}
+                {% set reading = states(sensor) | float(-1) %}
+                {% if reading >= 0 %}
+                  {% set ns.readings = ns.readings + ['Probe ' ~ num ~ ': ' ~ reading | round(0) ~ '% (zones: ' ~ zone_str ~ ')'] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.readings | join(', ') }}
+
+      # Check if ALL mapped zones are wet -> full skip
+      - if:
+          - condition: template
+            value_template: >-
+              {% set all_mapped = namespace(zones=[]) %}
+              {% set zone_strs = [zs1, zs2, zs3, zs4, zs5, zs6, zs7, zs8, zs9, zs10] %}
+              {% for zstr in zone_strs %}
+                {% if zstr | length > 0 %}
+                  {% for z in zstr.split(',') %}
+                    {% set zn = z | trim | int(0) %}
+                    {% if zn > 0 and zn not in all_mapped.zones %}
+                      {% set all_mapped.zones = all_mapped.zones + [zn] %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+              {% set mapped_count = all_mapped.zones | length %}
+              {{ mapped_count > 0 and wet_zones | length >= mapped_count }}
+        then:
+          - variables:
+              should_skip: true
+              skip_reason: >-
+                All mapped zones have adequate moisture (above {{ input_moisture_threshold }}%). {{ moisture_readings }}
+
+  # ── Step 4: Act on Skip Decision ──
+  # If we should skip, temporarily disable the schedule so the
+  # controller's own scheduler won't fire, then re-enable it after
+  # the scheduled time passes.
+  - if:
+      - condition: template
+        value_template: "{{ should_skip }}"
+    then:
+      # Disable the schedule on the controller
+      - action: switch.turn_off
+        target:
+          entity_id: !input schedule_enabled_switch
+
+      # Notify
+      - if:
+          - condition: template
+            value_template: "{{ input_notifications }}"
+        then:
+          - action: persistent_notification.create
+            data:
+              title: "Irrigation Skipped"
+              message: >-
+                Irrigation cycle skipped. Reason: {{ skip_reason }}.
+                The schedule has been temporarily disabled and will be
+                re-enabled after the scheduled time passes.
+              notification_id: "smart_irrigation_skip"
+
+      # Wait for the scheduled time to pass (pre-check window + 2 min buffer)
+      - delay:
+          minutes: "{{ (input_pre_check | int(5)) + 2 }}"
+
+      # Re-enable the schedule
+      - action: switch.turn_on
+        target:
+          entity_id: !input schedule_enabled_switch
+
+      - stop: "Irrigation skipped and schedule re-enabled"
+
+  # ── Step 5: Conditions are good — prepare for the run ──
+  # Disable wet zones (partial moisture skip)
+  - if:
+      - condition: template
+        value_template: "{{ wet_zones | length > 0 and input_zone_enable_switches | length > 0 }}"
+    then:
+      - repeat:
+          count: "{{ wet_zones | length }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >-
+                    {% set zone_num = wet_zones[repeat.index - 1] | int %}
+                    {{ zone_num > 0 and zone_num <= (input_zone_enable_switches | length) }}
+              then:
+                - action: switch.turn_off
+                  target:
+                    entity_id: >-
+                      {{ input_zone_enable_switches[wet_zones[repeat.index - 1] | int - 1] }}
+
+  # ── Step 6: Seasonal Adjustment ──
+  - if:
+      - condition: template
+        value_template: "{{ input_seasonal_mode != 'none' and input_zone_durations | length > 0 }}"
+    then:
+      - variables:
+          seasonal_multiplier: >-
+            {% set manual = (input_manual_multiplier | float(100)) / 100.0 %}
+            {% set temp_mult = 1.0 %}
+            {% if input_seasonal_mode in ['auto_temperature', 'both'] %}
+              {% set high = forecast_high_temp | float(input_temp_baseline) %}
+              {% set baseline = input_temp_baseline | float(80) %}
+              {% set delta = [high - baseline, 0] | max %}
+              {% set temp_mult = 1.0 + (delta * 0.01) %}
+            {% endif %}
+            {% if input_seasonal_mode == 'manual' %}
+              {{ manual }}
+            {% elif input_seasonal_mode == 'auto_temperature' %}
+              {{ temp_mult }}
+            {% elif input_seasonal_mode == 'both' %}
+              {{ manual * temp_mult }}
+            {% else %}
+              {{ 1.0 }}
+            {% endif %}
+
+      # Save original durations
+      - variables:
+          original_durations: >-
+            {% set ns = namespace(durations={}) %}
+            {% for entity_id in input_zone_durations %}
+              {% set ns.durations = dict(ns.durations, **{entity_id: states(entity_id) | float(2)}) %}
+            {% endfor %}
+            {{ ns.durations }}
+
+      # Apply adjusted durations
+      - repeat:
+          count: "{{ input_zone_durations | length }}"
+          sequence:
+            - action: number.set_value
+              target:
+                entity_id: "{{ input_zone_durations[repeat.index - 1] }}"
+              data:
+                value: >-
+                  {% set entity_id = input_zone_durations[repeat.index - 1] %}
+                  {% set original = original_durations[entity_id] | float(2) %}
+                  {% set adjusted = (original * (seasonal_multiplier | float(1.0))) | round(0) %}
+                  {{ [adjusted, 1] | max }}
+
+  # ── Step 7: Let the scheduled run proceed ──
+  # The controller's own schedule will fire at the scheduled time.
+  # We just need to wait for it to start and then complete.
+  - if:
+      - condition: template
+        value_template: "{{ input_notifications }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          title: "Irrigation Pre-Check Passed"
+          message: >-
+            Smart irrigation pre-check complete. Conditions are favorable.
+            The controller's scheduled cycle will start shortly.
+            {% if input_seasonal_mode != 'none' %}
+            Seasonal adjustment: {{ (seasonal_multiplier | float(1.0) * 100) | round(0) }}%
+            {% endif %}
+            {% if wet_zones | length > 0 %}
+            Zones disabled (adequate moisture): {{ wet_zones | join(', ') }}
+            {% endif %}
+            {% if input_weather_entity not in ['', None, 'unknown', 'unavailable', {}] %}
+            Forecast: High {{ forecast_high_temp }}°F, Low {{ forecast_low_temp }}°F, Rain {{ forecast_rain_prob }}%
+            {% endif %}
+          notification_id: "smart_irrigation_status"
+
+  # Wait for the controller to start (schedule fires at the exact time)
+  - wait_for_trigger:
+      - platform: state
+        entity_id: !input irrigation_switch
+        to: "on"
+    timeout:
+      minutes: "{{ (input_pre_check | int(5)) + 5 }}"
+    continue_on_timeout: true
+
+  # Wait for the irrigation cycle to complete
+  - if:
+      - condition: state
+        entity_id: !input irrigation_switch
+        state: "on"
+    then:
+      - wait_for_trigger:
+          - platform: state
+            entity_id: !input irrigation_switch
+            to: "off"
+        timeout:
+          hours: 8
+        continue_on_timeout: true
+
+  # ── Step 8: Post-Run Cleanup ──
+  # Restore original zone durations
+  - if:
+      - condition: template
+        value_template: "{{ input_seasonal_mode != 'none' and original_durations | length > 0 }}"
+    then:
+      - repeat:
+          count: "{{ input_zone_durations | length }}"
+          sequence:
+            - action: number.set_value
+              target:
+                entity_id: "{{ input_zone_durations[repeat.index - 1] }}"
+              data:
+                value: >-
+                  {% set entity_id = input_zone_durations[repeat.index - 1] %}
+                  {{ original_durations[entity_id] | float(2) }}
+
+  # Re-enable any zones that were disabled for moisture
+  - if:
+      - condition: template
+        value_template: "{{ wet_zones | length > 0 and input_zone_enable_switches | length > 0 }}"
+    then:
+      - repeat:
+          count: "{{ wet_zones | length }}"
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >-
+                    {% set zone_num = wet_zones[repeat.index - 1] | int %}
+                    {{ zone_num > 0 and zone_num <= (input_zone_enable_switches | length) }}
+              then:
+                - action: switch.turn_on
+                  target:
+                    entity_id: >-
+                      {{ input_zone_enable_switches[wet_zones[repeat.index - 1] | int - 1] }}
+
+  # Completion notification
+  - if:
+      - condition: template
+        value_template: "{{ input_notifications }}"
+    then:
+      - action: persistent_notification.create
+        data:
+          title: "Irrigation Complete"
+          message: >-
+            Smart irrigation cycle completed at {{ now().strftime('%I:%M %p') }}.
+            {% if wet_zones | length > 0 %}
+            Zones that were skipped due to moisture: {{ wet_zones | join(', ') }}
+            {% endif %}
+            {% if input_seasonal_mode != 'none' %}
+            Seasonal multiplier applied: {{ (seasonal_multiplier | float(1.0) * 100) | round(0) }}%
+            {% endif %}
+          notification_id: "smart_irrigation_status"
+
+mode: single
+max_exceeded: silent
