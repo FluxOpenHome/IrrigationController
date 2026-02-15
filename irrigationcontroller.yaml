@@ -25,7 +25,7 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
   project:
-    name: "flux_open_home.irrigation_controller"
+    name: "FluxOpenHome.Irrigation"
     version: "${software_version}"
   on_boot:
     priority: -100
