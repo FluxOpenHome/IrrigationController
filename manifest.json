@@ -5,8 +5,8 @@
     {
       "chipFamily": "ESP32-S3",
       "ota": {
-        "md5": "3b98e324880edb4043fa13db8d9e1743",
-        "path": "https://github.com/FluxOpenHome/IrrigationController/releases/download/v1.2.7/127-irrigation-controller.ota.bin",
+        "md5": "f2c4ea41e0f16901277f95f2e4bc0ba0",
+        "path": "https://github.com/FluxOpenHome/IrrigationController/releases/download/v1.2.7/irrigation-controller-1.2.7.ota.bin",
         "release_url": "https://github.com/FluxOpenHome/IrrigationController/releases/tag/v1.2.7",
         "summary": "Update 1.2.7"
       }
